@@ -2624,7 +2624,9 @@
     let closedFrameTimes = []; // PERCLOS 롤링 창용 — 눈 닫힘 프레임 타임스탬프
     let eyeClosedFrames = 0, totalFrames    = 0; // 세션 전체 누적 (blink-rate 분모용)
     let totalBlinks     = 0, incompleteBlinks = 0;
-    let lastFatigueUpdate = 0;
+    let lastFatigueUpdate   = 0;
+    let lastConditionUpdate = 0;
+    let lastConditionDelta  = 0;
     let monitoringStartTs = 0;
     let smoothedScore     = 100;
     let welcomeActive     = true;
@@ -3191,31 +3193,23 @@
           }
         }
 
-        const result   = computeFatigue();
+        const result    = computeFatigue();
         const prevScore = state.score;
 
-        // 패턴 기반 감점: 특정 피로 패턴 감지 시 차감, 패턴 없으면 서서히 회복
+        // 컨디션 지수: 1분마다 현재 피로도에 비례 감점
+        // delta = -(현재 피로도 / 100) × 5점 × sensitivity 배율
+        if (!warmupActive && now - lastConditionUpdate >= 60000) {
+          lastConditionUpdate = now;
+          const maxDecay = 5; // 피로도 100일 때 최대 감점 (점/분)
+          lastConditionDelta  = -(result.score / 100) * maxDecay * (settings.sensitivity / 5);
+          smoothedScore = Math.max(0, Math.min(100, smoothedScore + lastConditionDelta));
+          state.score   = Math.round(smoothedScore);
+        }
+
+        // CSV용 보조 지표 (컨디션 계산에는 미사용)
         const earRatio   = baselineRef.ear > 0 ? result.detail.avgEAR / baselineRef.ear : 1;
         const blinkRatio = baselineRef.blinkRate > 0 ? result.raw.blinkRate / baselineRef.blinkRate : 1;
         const incRate    = totalBlinks > 0 ? incompleteBlinks / totalBlinks : 0;
-
-        let delta = 0;
-        // 눈 처짐 (EAR 하락)
-        if      (earRatio < 0.74) delta -= 0.08;
-        else if (earRatio < 0.84) delta -= 0.04;
-        else if (earRatio < 0.92) delta -= 0.02;
-        // 깜빡임 빈도 저하
-        if      (blinkRatio < 0.55) delta -= 0.05;
-        else if (blinkRatio < 0.75) delta -= 0.02;
-        // 불완전 깜빡임 증가
-        if      (incRate > 0.50) delta -= 0.04;
-        else if (incRate > 0.35) delta -= 0.02;
-        // PERCLOS 상승
-        if      (result.raw.perclos > 0.10) delta -= 0.06;
-        else if (result.raw.perclos > 0.05) delta -= 0.03;
-        const sensitivityMult = settings.sensitivity / 5;
-        smoothedScore = Math.max(0, Math.min(100, smoothedScore + delta * sensitivityMult));
-        state.score   = Math.round(smoothedScore);
 
         const phase = baselineActive ? 'baseline' : warmupActive ? 'warmup' : 'measuring';
         if (now - lastDataLogTs >= 600000) {
@@ -3233,7 +3227,7 @@
           blink_ratio:     +blinkRatio.toFixed(4),
           incomplete_rate: +incRate.toFixed(4),
           perclos:         +result.raw.perclos.toFixed(4),
-          delta:           +delta.toFixed(4),
+          delta:           +lastConditionDelta.toFixed(4),
           fatigue_score:   result.score,
           condition_score: state.score,
           phase,
