@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .popup {
+      width: 100%;
+      height: 100%;
+      background: #3d3d50;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+
+    /* ── 상단 콘텐츠 영역 ── */
+    .popup-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 20px 10px;
+      -webkit-app-region: drag;
+    }
+
+    .popup-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .popup-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .popup-title .eye-icon { color: #60a5fa; font-size: 15px; }
+
+    .settings-btn {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.45);
+      font-size: 17px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      line-height: 1;
+    }
+
+    .settings-btn:hover { color: rgba(255,255,255,0.8); }
+
+    .mascot-area { margin: 4px 0 0; }
+
+    .mascot-area img {
+      width: 108px;
+      height: 108px;
+      object-fit: contain;
+    }
+
+    .score-number {
+      font-size: 54px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+      letter-spacing: -1px;
+    }
+
+    .score-label {
+      margin-top: 6px;
+      font-size: 11px;
+      letter-spacing: 2.5px;
+      color: rgba(255,255,255,0.38);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 8px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    /* ── 하단 툴바 ── */
+    .popup-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.18);
+      -webkit-app-region: no-drag;
+    }
+
+    .footer-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.5);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 8px;
+      transition: background 0.15s, color 0.15s;
+      line-height: 1;
+    }
+
+    .footer-btn span {
+      font-size: 12px;
+      letter-spacing: 0.3px;
+    }
+
+    .footer-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.9);
+    }
+
+    .footer-divider {
+      width: 1px;
+      height: 28px;
+      background: rgba(255,255,255,0.08);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup">
+    <div class="popup-body">
+      <div class="popup-header">
+        <div class="popup-title">
+          <span class="eye-icon">◉</span>
+          <span>Okumong</span>
+        </div>
+        <button class="settings-btn" id="settings-btn" title="설정">⊟</button>
+      </div>
+
+      <div class="mascot-area">
+        <img id="popup-mascot" src="images/좋음.png" alt="오큐몽">
+      </div>
+
+      <div class="score-number" id="popup-score">72</div>
+      <div class="score-label">SCORE</div>
+
+      <div class="status-pill" id="status-pill">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Status: 조금 피로함</span>
+      </div>
+    </div>
+
+    <!-- 하단 툴바 -->
+    <div class="popup-footer">
+      <button class="footer-btn" id="open-btn" title="대시보드 열기">
+        <span>品</span>
+        <span>대시보드</span>
+      </button>
+      <div class="footer-divider"></div>
+      <button class="footer-btn" id="exercise-btn" title="눈 운동">
+        <span>◉</span>
+        <span>눈 운동</span>
+      </button>
+      <div class="footer-divider"></div>
+      <button class="footer-btn" id="quit-btn" title="종료">
+        <span>⏻</span>
+        <span>종료</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const STATUS = {
+      good:   { color: '#6dd4a0', bg: 'rgba(109,212,160,0.16)' },
+      warn:   { color: '#ffb86a', bg: 'rgba(255,184,106,0.16)' },
+      bad:    { color: '#ff9f7a', bg: 'rgba(255,159,122,0.16)' },
+      danger: { color: '#ffaaa4', bg: 'rgba(255,170,164,0.16)' },
+    };
+
+    function applyStatus(title, score) {
+      const s = score >= 80 ? STATUS.good : score >= 60 ? STATUS.warn : score >= 35 ? STATUS.bad : STATUS.danger;
+      document.getElementById('status-dot').style.background = s.color;
+      const pill = document.getElementById('status-pill');
+      pill.style.background = s.bg;
+      pill.style.color = s.color;
+      document.getElementById('status-text').textContent = `Status: ${title}`;
+    }
+
+    function getCharImage(score) {
+      if (score >= 80) return 'images/아주좋음.png';
+      if (score >= 60) return 'images/좋음.png';
+      if (score >= 40) return 'images/나쁨.png';
+      if (score >= 20) return 'images/아주나쁨.png';
+      return 'images/최악.png';
+    }
+
+    applyStatus('조금 피로함', 72);
+
+    document.getElementById('open-btn').addEventListener('click', () => window.electronAPI.showDashboard('dashboard'));
+    document.getElementById('exercise-btn').addEventListener('click', () => window.electronAPI.showDashboard('exercises'));
+    document.getElementById('settings-btn').addEventListener('click', () => window.electronAPI.showDashboard('preferences'));
+    document.getElementById('quit-btn').addEventListener('click', () => window.electronAPI.quit());
+
+    window.electronAPI.onUpdateState((state) => {
+      document.getElementById('popup-score').textContent = state.score;
+      document.getElementById('popup-mascot').src = getCharImage(state.score);
+      applyStatus(state.statusTitle, state.score);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "okumong",
+  "version": "0.1.0",
+  "description": "오큐몽 - 눈 피로도 측정 맥 앱",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^35.0.0"
+  }
+}

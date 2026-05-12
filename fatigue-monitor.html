@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Eye Fatigue Monitor - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        overflow: hidden; width: 100vw; height: 100vh;
+        font-family: 'Outfit', sans-serif;
+        background: #08090e; color: #e0e4ef;
+      }
+
+      .screen { display: none; width: 100vw; height: 100vh; }
+      .screen.active { display: flex; }
+
+      /* ── Start Screen ── */
+      #screen-start {
+        flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+        background: radial-gradient(ellipse at 50% 40%, #0f1528 0%, #08090e 70%);
+      }
+      #screen-start .icon { font-size: 48px; margin-bottom: 4px; }
+      #screen-start h1 {
+        font-size: 26px; font-weight: 700; letter-spacing: -0.5px;
+        background: linear-gradient(135deg, #7eb8ff 0%, #a78bfa 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      #screen-start p {
+        font-size: 13px; color: rgba(255,255,255,0.35); text-align: center; line-height: 1.9;
+        max-width: 380px;
+      }
+
+      /* ── Calibration ── */
+      #screen-calib { position: relative; flex-direction: column; align-items: center; justify-content: center;
+        background: #08090e; }
+      #calib-instruction {
+        position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+        font-size: 13px; color: rgba(255,255,255,0.7);
+        background: rgba(15,20,40,0.85); padding: 10px 24px; border-radius: 20px; z-index: 10;
+        border: 1px solid rgba(120,180,255,0.15);
+        backdrop-filter: blur(10px);
+      }
+      #calib-progress {
+        position: fixed; top: 68px; left: 50%; transform: translateX(-50%);
+        font-size: 12px; color: rgba(255,255,255,0.3); z-index: 10;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .calib-dot {
+        position: fixed; width: 26px; height: 26px; border-radius: 50%;
+        background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.15);
+        transform: translate(-50%, -50%); cursor: pointer; z-index: 10;
+        transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      }
+      .calib-dot.active {
+        background: rgba(126,184,255,0.25); border-color: #7eb8ff;
+        transform: translate(-50%, -50%) scale(1.5);
+        box-shadow: 0 0 24px rgba(126,184,255,0.5), inset 0 0 8px rgba(126,184,255,0.3);
+        animation: cpulse 1s infinite alternate ease-in-out;
+      }
+      .calib-dot.done { background: rgba(126,184,255,0.08); border-color: rgba(126,184,255,0.15); }
+      @keyframes cpulse {
+        from { box-shadow: 0 0 14px rgba(126,184,255,0.4); }
+        to   { box-shadow: 0 0 30px rgba(126,184,255,0.7); }
+      }
+
+      /* ── Main Screen ── */
+      #screen-main { position: relative; background: #08090e; }
+
+      /* ── Fatigue Score (big) ── */
+      #fatigue-hero {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        z-index: 10; text-align: center; pointer-events: none;
+        opacity: 0.12;
+      }
+      #fatigue-hero .score {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 180px; font-weight: 700; line-height: 1;
+        background: linear-gradient(180deg, #7eb8ff 0%, #a78bfa 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      #fatigue-hero .label {
+        font-size: 14px; color: rgba(255,255,255,0.4); letter-spacing: 6px;
+        text-transform: uppercase; margin-top: 8px;
+      }
+
+      /* ── Baseline overlay ── */
+      #baseline-overlay {
+        position: fixed; inset: 0; z-index: 200;
+        background: rgba(8,9,14,0.92);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px;
+        backdrop-filter: blur(6px);
+      }
+      #baseline-overlay.hidden { display: none; }
+      #baseline-overlay .ring {
+        width: 120px; height: 120px; border-radius: 50%;
+        border: 3px solid rgba(126,184,255,0.15);
+        border-top-color: #7eb8ff;
+        animation: spin 1.2s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #baseline-overlay .text {
+        font-size: 15px; color: rgba(255,255,255,0.6); font-weight: 500;
+      }
+      #baseline-overlay .sub {
+        font-size: 12px; color: rgba(255,255,255,0.25);
+        font-family: 'JetBrains Mono', monospace;
+      }
+      #baseline-bar {
+        width: 200px; height: 4px; border-radius: 2px;
+        background: rgba(255,255,255,0.06); overflow: hidden; margin-top: 4px;
+      }
+      #baseline-bar-fill {
+        height: 100%; width: 0%; border-radius: 2px;
+        background: linear-gradient(90deg, #7eb8ff, #a78bfa);
+        transition: width 0.3s;
+      }
+
+      /* ── Stats Panel (left) ── */
+      #stats-panel {
+        position: fixed; top: 20px; left: 20px;
+        background: rgba(12,14,24,0.85);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px; padding: 20px;
+        z-index: 99; width: 260px;
+        backdrop-filter: blur(12px);
+      }
+      #stats-panel h3 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 3px;
+        color: rgba(255,255,255,0.25); margin-bottom: 16px; font-weight: 600;
+      }
+
+      .metric {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+      }
+      .metric:last-child { border-bottom: none; }
+      .metric .m-label {
+        font-size: 12px; color: rgba(255,255,255,0.4);
+      }
+      .metric .m-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px; font-weight: 600;
+      }
+      .metric .m-bar {
+        width: 50px; height: 4px; border-radius: 2px;
+        background: rgba(255,255,255,0.06); overflow: hidden; margin-left: 8px;
+      }
+      .metric .m-bar-fill {
+        height: 100%; border-radius: 2px;
+        transition: width 0.5s, background 0.5s;
+      }
+
+      .c-good { color: #5ce0a0; }
+      .c-ok { color: #7eb8ff; }
+      .c-warn { color: #f5a623; }
+      .c-bad { color: #f06; }
+      .bg-good { background: #5ce0a0; }
+      .bg-ok { background: #7eb8ff; }
+      .bg-warn { background: #f5a623; }
+      .bg-bad { background: #f06; }
+
+      /* ── Fatigue gauge ── */
+      #fatigue-gauge {
+        margin-top: 16px; padding-top: 16px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+      }
+      #fatigue-gauge .gauge-header {
+        display: flex; justify-content: space-between; align-items: baseline;
+        margin-bottom: 10px;
+      }
+      #fatigue-gauge .gauge-label {
+        font-size: 12px; color: rgba(255,255,255,0.5); font-weight: 500;
+      }
+      #fatigue-gauge .gauge-score {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 28px; font-weight: 700;
+      }
+      #gauge-bar {
+        width: 100%; height: 8px; border-radius: 4px;
+        background: rgba(255,255,255,0.04); overflow: hidden;
+      }
+      #gauge-bar-fill {
+        height: 100%; border-radius: 4px; width: 0%;
+        transition: width 0.6s ease, background 0.6s;
+        background: #5ce0a0;
+      }
+      #fatigue-status {
+        font-size: 11px; margin-top: 8px; color: rgba(255,255,255,0.3);
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* ── Chart Panel (right) ── */
+      #chart-panel {
+        position: fixed; top: 20px; right: 20px;
+        background: rgba(12,14,24,0.85);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px; padding: 20px;
+        z-index: 99; width: 380px;
+        backdrop-filter: blur(12px);
+      }
+      #chart-panel h3 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 3px;
+        color: rgba(255,255,255,0.25); margin-bottom: 12px; font-weight: 600;
+      }
+      #fatigue-chart {
+        width: 100%; height: 140px;
+        border: 1px solid rgba(255,255,255,0.04); border-radius: 8px;
+        background: rgba(0,0,0,0.2);
+      }
+
+      /* Sub-charts */
+      .sub-charts {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;
+      }
+      .sub-chart-wrap {
+        background: rgba(0,0,0,0.15); border-radius: 8px; padding: 10px;
+        border: 1px solid rgba(255,255,255,0.03);
+      }
+      .sub-chart-wrap .sc-label {
+        font-size: 10px; color: rgba(255,255,255,0.3); margin-bottom: 6px;
+        text-transform: uppercase; letter-spacing: 1px;
+      }
+      .sub-chart-wrap canvas { width: 100%; height: 60px; }
+
+      /* ── Webcam ── */
+      #webcam-wrap {
+        position: fixed; bottom: 20px; left: 20px;
+        border-radius: 12px; overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.08); z-index: 99;
+      }
+      #webcam { width: 180px; height: 135px; transform: scaleX(-1); display: block; }
+
+      /* ── Timer ── */
+      #session-timer {
+        position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px; color: rgba(255,255,255,0.2); z-index: 99;
+      }
+
+      /* ── Buttons ── */
+      .btn {
+        padding: 12px 28px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.04); color: #e0e4ef; font-size: 14px;
+        cursor: pointer; font-family: 'Outfit', sans-serif;
+        transition: all 0.2s;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, #7eb8ff, #a78bfa);
+        color: #08090e; border: none; font-weight: 600;
+      }
+      .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(126,184,255,0.3); }
+      #recalib-btn {
+        position: fixed; bottom: 20px; right: 20px; z-index: 99;
+        padding: 8px 16px; border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(12,14,24,0.8); color: rgba(255,255,255,0.4);
+        cursor: pointer; font-size: 12px; font-family: 'Outfit', sans-serif;
+      }
+      #home-btn {
+        position: fixed; bottom: 20px; right: 140px; z-index: 99;
+        padding: 8px 16px; border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(12,14,24,0.8); color: rgba(255,255,255,0.4);
+        cursor: pointer; font-size: 12px; font-family: 'Outfit', sans-serif;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ▸ Start -->
+    <div class="screen active" id="screen-start">
+      <div class="icon">👁</div>
+      <h1>Eye Fatigue Monitor</h1>
+      <p>
+        웹캠 기반 안구 피로도 실시간 측정 데모<br>
+        EAR · 깜빡임 패턴 · 시선 안정성 · PERCLOS를 복합 분석합니다.<br><br>
+        캘리브레이션 9포인트 → 30초 베이스라인 수집 → 실시간 모니터링
+      </p>
+      <button class="btn btn-primary" onclick="startCalib()">시작하기</button>
+    </div>
+
+    <!-- ▸ Calibration -->
+    <div class="screen" id="screen-calib">
+      <div id="calib-instruction">파란 점을 바라보면서 클릭하세요</div>
+      <div id="calib-progress">0 / 9</div>
+    </div>
+
+    <!-- ▸ Main -->
+    <div class="screen" id="screen-main">
+
+      <!-- Big background score -->
+      <div id="fatigue-hero">
+        <div class="score" id="hero-score">0</div>
+        <div class="label">Fatigue Index</div>
+      </div>
+
+      <!-- Baseline overlay -->
+      <div id="baseline-overlay">
+        <div class="ring"></div>
+        <div class="text">베이스라인 수집 중</div>
+        <div class="sub" id="baseline-timer">자연스럽게 화면을 바라봐 주세요 — 0 / 30s</div>
+        <div id="baseline-bar"><div id="baseline-bar-fill"></div></div>
+      </div>
+
+      <!-- Stats Panel -->
+      <div id="stats-panel">
+        <h3>실시간 지표</h3>
+
+        <div class="metric">
+          <span class="m-label">눈 개방도 (EAR)</span>
+          <span class="m-value c-ok" id="m-ear">—</span>
+        </div>
+        <div class="metric">
+          <span class="m-label">EAR 변화율</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="m-value c-ok" id="m-ear-delta">—</span>
+            <div class="m-bar"><div class="m-bar-fill bg-ok" id="bar-ear" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="metric">
+          <span class="m-label">깜빡임 빈도</span>
+          <span class="m-value c-ok" id="m-blink-rate">—</span>
+        </div>
+        <div class="metric">
+          <span class="m-label">깜빡임 지속시간</span>
+          <span class="m-value c-ok" id="m-blink-dur">—</span>
+        </div>
+        <div class="metric">
+          <span class="m-label">PERCLOS</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="m-value c-ok" id="m-perclos">—</span>
+            <div class="m-bar"><div class="m-bar-fill bg-ok" id="bar-perclos" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="metric">
+          <span class="m-label">시선 분산도</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="m-value c-ok" id="m-gaze-var">—</span>
+            <div class="m-bar"><div class="m-bar-fill bg-ok" id="bar-gaze" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <!-- Fatigue Gauge -->
+        <div id="fatigue-gauge">
+          <div class="gauge-header">
+            <span class="gauge-label">피로도 종합</span>
+            <span class="gauge-score c-good" id="fatigue-num">0</span>
+          </div>
+          <div id="gauge-bar"><div id="gauge-bar-fill"></div></div>
+          <div id="fatigue-status">베이스라인 수집 대기 중</div>
+        </div>
+      </div>
+
+      <!-- Chart Panel -->
+      <div id="chart-panel">
+        <h3>피로도 추이</h3>
+        <canvas id="fatigue-chart"></canvas>
+        <div class="sub-charts">
+          <div class="sub-chart-wrap">
+            <div class="sc-label">EAR</div>
+            <canvas id="chart-ear"></canvas>
+          </div>
+          <div class="sub-chart-wrap">
+            <div class="sc-label">깜빡임/분</div>
+            <canvas id="chart-blink"></canvas>
+          </div>
+          <div class="sub-chart-wrap">
+            <div class="sc-label">PERCLOS</div>
+            <canvas id="chart-perclos"></canvas>
+          </div>
+          <div class="sub-chart-wrap">
+            <div class="sc-label">시선 분산</div>
+            <canvas id="chart-gaze"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Webcam -->
+      <div id="webcam-wrap">
+        <video id="webcam" autoplay playsinline></video>
+      </div>
+
+      <div id="session-timer">00:00</div>
+      <button id="recalib-btn" onclick="startCalib()">재캘리브레이션</button>
+      <a id="home-btn" href="index.html">← 메인</a>
+    </div>
+
+    <script>
+      // ══════════════════════════════════════════════════
+      //  SCREEN MANAGEMENT
+      // ══════════════════════════════════════════════════
+      function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+      }
+
+      // ══════════════════════════════════════════════════
+      //  CALIBRATION (same logic as original)
+      // ══════════════════════════════════════════════════
+      let calibData = [], calibIndex = 0, calibDots = [];
+      let currentIris = { lx:0, ly:0, rx:0, ry:0 };
+      let regCoeff = null;
+
+      const CALIB_POINTS = [
+        [0.08,0.08],[0.5,0.08],[0.92,0.08],
+        [0.08,0.5], [0.5,0.5], [0.92,0.5],
+        [0.08,0.92],[0.5,0.92],[0.92,0.92]
+      ];
+
+      function startCalib() {
+        calibData = []; calibIndex = 0;
+        showScreen('screen-calib');
+        calibDots.forEach(d => d.remove()); calibDots = [];
+        const calib = document.getElementById('screen-calib');
+        CALIB_POINTS.forEach((pos, i) => {
+          const dot = document.createElement('div');
+          dot.className = 'calib-dot';
+          dot.style.left = (pos[0]*100)+'vw';
+          dot.style.top = (pos[1]*100)+'vh';
+          dot.onclick = () => handleCalibClick(i, pos, dot);
+          calib.appendChild(dot);
+          calibDots.push(dot);
+        });
+        activateCalibDot(0);
+      }
+
+      function activateCalibDot(i) {
+        calibDots.forEach(d => d.classList.remove('active'));
+        if (calibDots[i]) calibDots[i].classList.add('active');
+        document.getElementById('calib-progress').textContent = i + ' / 9';
+      }
+
+      function handleCalibClick(i, pos, dot) {
+        if (i !== calibIndex) return;
+        calibData.push({
+          sx: pos[0]*window.innerWidth, sy: pos[1]*window.innerHeight,
+          lx: currentIris.lx, ly: currentIris.ly,
+          rx: currentIris.rx, ry: currentIris.ry
+        });
+        dot.classList.remove('active'); dot.classList.add('done');
+        calibIndex++;
+        document.getElementById('calib-progress').textContent = calibIndex + ' / 9';
+        if (calibIndex < 9) activateCalibDot(calibIndex);
+        else { fitRegression(); setTimeout(() => { showScreen('screen-main'); startBaseline(); }, 300); }
+      }
+
+      function fitRegression() {
+        if (calibData.length < 4) return;
+        const X = calibData.map(d => [d.lx, d.ly, d.rx, d.ry, 1]);
+        regCoeff = { x: lstSq(X, calibData.map(d=>d.sx)), y: lstSq(X, calibData.map(d=>d.sy)) };
+      }
+      function lstSq(X, y) {
+        const n=X.length, m=X[0].length;
+        const XtX=Array.from({length:m},()=>Array(m).fill(0));
+        for(let i=0;i<m;i++) for(let j=0;j<m;j++) for(let k=0;k<n;k++) XtX[i][j]+=X[k][i]*X[k][j];
+        const Xty=Array(m).fill(0);
+        for(let i=0;i<m;i++) for(let k=0;k<n;k++) Xty[i]+=X[k][i]*y[k];
+        return gaussSolve(XtX, Xty);
+      }
+      function gaussSolve(A, b) {
+        const n=b.length, M=A.map((r,i)=>[...r,b[i]]);
+        for(let c=0;c<n;c++){
+          let p=c; for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[p][c])) p=r;
+          [M[c],M[p]]=[M[p],M[c]]; if(Math.abs(M[c][c])<1e-10) continue;
+          for(let r=0;r<n;r++){ if(r===c) continue; const f=M[r][c]/M[c][c]; for(let j=c;j<=n;j++) M[r][j]-=f*M[c][j]; }
+        }
+        return M.map((r,i)=>r[n]/r[i]);
+      }
+      function predictGaze(lx,ly,rx,ry) {
+        if(!regCoeff) return null;
+        const f=[lx,ly,rx,ry,1];
+        return { x:regCoeff.x.reduce((s,c,i)=>s+c*f[i],0), y:regCoeff.y.reduce((s,c,i)=>s+c*f[i],0) };
+      }
+      const gazeHistory = []; const SMOOTH_N = 6;
+      function smoothGaze(x,y) {
+        gazeHistory.push({x,y}); if(gazeHistory.length>SMOOTH_N) gazeHistory.shift();
+        return { x:gazeHistory.reduce((s,p)=>s+p.x,0)/gazeHistory.length, y:gazeHistory.reduce((s,p)=>s+p.y,0)/gazeHistory.length };
+      }
+
+      // ══════════════════════════════════════════════════
+      //  FATIGUE ENGINE
+      // ══════════════════════════════════════════════════
+      const BASELINE_DURATION = 30; // seconds
+      let baselineMode = false, baselineStart = 0;
+      let baseline = { ear: [], blinkDurations: [], gazeVar: [], perclos: [] };
+      let baselineRef = { ear: 0, blinkRate: 0, blinkDur: 0, gazeVar: 0, perclos: 0 };
+
+      // Rolling window buffers (last 60 seconds of raw data)
+      const WINDOW_SEC = 60;
+      let earBuffer = [];        // { t, v }
+      let blinkEvents = [];      // { t, duration }
+      let eyeClosedFrames = 0, totalFrames = 0; // for PERCLOS
+      let gazeBuffer = [];       // { t, x, y }
+      let sessionStart = 0;
+      let fatigueHistory = [];   // { t, score }
+
+      // Blink detection state
+      let isBlinking = false, blinkStart = 0, minEARInBlink = 1;
+      const EAR_THRESH = 0.21;
+      const PERCLOS_THRESH = 0.22; // EAR below this = "closed"
+
+      function startBaseline() {
+        baselineMode = true;
+        baselineStart = Date.now();
+        baseline = { ear: [], blinkDurations: [], gazeVar: [], perclos: [] };
+        document.getElementById('baseline-overlay').classList.remove('hidden');
+        sessionStart = Date.now();
+      }
+
+      function endBaseline() {
+        baselineMode = false;
+        document.getElementById('baseline-overlay').classList.add('hidden');
+        // Compute baseline reference values
+        if (baseline.ear.length > 0) {
+          baselineRef.ear = baseline.ear.reduce((a,b)=>a+b,0) / baseline.ear.length;
+        }
+        // Blink rate: blinks in baseline period
+        const blSec = BASELINE_DURATION;
+        baselineRef.blinkRate = (baseline.blinkDurations.length / blSec) * 60; // per minute
+        if (baseline.blinkDurations.length > 0) {
+          baselineRef.blinkDur = baseline.blinkDurations.reduce((a,b)=>a+b,0) / baseline.blinkDurations.length;
+        }
+        // PERCLOS baseline
+        baselineRef.perclos = eyeClosedFrames / Math.max(totalFrames, 1);
+        // Gaze variance baseline
+        if (baseline.gazeVar.length > 10) {
+          const gx = baseline.gazeVar.map(g=>g.x);
+          const gy = baseline.gazeVar.map(g=>g.y);
+          const mx = gx.reduce((a,b)=>a+b,0)/gx.length;
+          const my = gy.reduce((a,b)=>a+b,0)/gy.length;
+          baselineRef.gazeVar = Math.sqrt(
+            gx.reduce((s,v)=>s+(v-mx)**2,0)/gx.length +
+            gy.reduce((s,v)=>s+(v-my)**2,0)/gy.length
+          );
+        }
+        // Reset rolling counters
+        eyeClosedFrames = 0; totalFrames = 0;
+        earBuffer = []; blinkEvents = []; gazeBuffer = [];
+        document.getElementById('fatigue-status').textContent = '측정 중';
+      }
+
+      function computeFatigue() {
+        const now = Date.now();
+        const cutoff = now - WINDOW_SEC * 1000;
+
+        // 1. EAR change ratio (lower = more fatigue)
+        const recentEAR = earBuffer.filter(e => e.t > cutoff);
+        let earScore = 0;
+        if (recentEAR.length > 0 && baselineRef.ear > 0) {
+          const avgEAR = recentEAR.reduce((s,e)=>s+e.v,0) / recentEAR.length;
+          const ratio = avgEAR / baselineRef.ear; // 1.0 = same as baseline
+          earScore = Math.max(0, Math.min(1, (1 - ratio) * 5)); // amplify
+        }
+
+        // 2. Blink rate change
+        const recentBlinks = blinkEvents.filter(e => e.t > cutoff);
+        let blinkRateScore = 0;
+        const currentRate = (recentBlinks.length / WINDOW_SEC) * 60;
+        if (baselineRef.blinkRate > 0) {
+          const ratio = currentRate / baselineRef.blinkRate;
+          // Both increase AND decrease from baseline are fatigue signals
+          blinkRateScore = Math.max(0, Math.min(1, Math.abs(ratio - 1) * 1.5));
+        }
+
+        // 3. Blink duration change
+        let blinkDurScore = 0;
+        if (recentBlinks.length > 0 && baselineRef.blinkDur > 0) {
+          const avgDur = recentBlinks.reduce((s,e)=>s+e.duration,0) / recentBlinks.length;
+          const ratio = avgDur / baselineRef.blinkDur;
+          blinkDurScore = Math.max(0, Math.min(1, (ratio - 1) * 2));
+        }
+
+        // 4. PERCLOS (last 60s)
+        let perclosScore = 0;
+        const perclosVal = totalFrames > 0 ? eyeClosedFrames / totalFrames : 0;
+        perclosScore = Math.max(0, Math.min(1, perclosVal * 5));
+
+        // 5. Gaze variance change
+        let gazeScore = 0;
+        const recentGaze = gazeBuffer.filter(g => g.t > cutoff);
+        if (recentGaze.length > 10 && baselineRef.gazeVar > 0) {
+          const gx = recentGaze.map(g=>g.x);
+          const gy = recentGaze.map(g=>g.y);
+          const mx = gx.reduce((a,b)=>a+b,0)/gx.length;
+          const my = gy.reduce((a,b)=>a+b,0)/gy.length;
+          const currentVar = Math.sqrt(
+            gx.reduce((s,v)=>s+(v-mx)**2,0)/gx.length +
+            gy.reduce((s,v)=>s+(v-my)**2,0)/gy.length
+          );
+          const ratio = currentVar / Math.max(baselineRef.gazeVar, 0.001);
+          gazeScore = Math.max(0, Math.min(1, (ratio - 1) * 1.2));
+        }
+
+        // Weighted composite
+        const fatigue = (
+          earScore * 0.30 +
+          blinkRateScore * 0.15 +
+          blinkDurScore * 0.15 +
+          perclosScore * 0.25 +
+          gazeScore * 0.15
+        );
+
+        const score = Math.round(Math.max(0, Math.min(100, fatigue * 100)));
+
+        return {
+          score,
+          components: { earScore, blinkRateScore, blinkDurScore, perclosScore, gazeScore },
+          raw: {
+            ear: recentEAR.length > 0 ? recentEAR.reduce((s,e)=>s+e.v,0)/recentEAR.length : 0,
+            blinkRate: currentRate,
+            blinkDur: recentBlinks.length > 0 ? recentBlinks.reduce((s,e)=>s+e.duration,0)/recentBlinks.length : 0,
+            perclos: perclosVal,
+            gazeVar: gazeScore
+          }
+        };
+      }
+
+      // ══════════════════════════════════════════════════
+      //  CHART DRAWING
+      // ══════════════════════════════════════════════════
+      function drawChart(canvasId, data, maxVal, color, filled) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width = canvas.offsetWidth * 2;
+        const H = canvas.height = canvas.offsetHeight * 2;
+        ctx.clearRect(0,0,W,H);
+
+        if (data.length < 2) return;
+
+        const pad = 4;
+        const drawW = W - pad*2, drawH = H - pad*2;
+
+        ctx.beginPath();
+        data.forEach((d, i) => {
+          const x = pad + (i / (data.length-1)) * drawW;
+          const y = pad + drawH - (Math.min(d, maxVal) / maxVal) * drawH;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+
+        if (filled) {
+          ctx.lineTo(pad + drawW, pad + drawH);
+          ctx.lineTo(pad, pad + drawH);
+          ctx.closePath();
+          ctx.fillStyle = color.replace('1)', '0.15)');
+          ctx.fill();
+        }
+
+        // Stroke
+        ctx.beginPath();
+        data.forEach((d, i) => {
+          const x = pad + (i / (data.length-1)) * drawW;
+          const y = pad + drawH - (Math.min(d, maxVal) / maxVal) * drawH;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Data history for sub-charts (sampled every 2s)
+      let chartData = { fatigue: [], ear: [], blink: [], perclos: [], gaze: [] };
+      const MAX_CHART_POINTS = 90; // 3 min at 2s intervals
+
+      function updateCharts(result) {
+        chartData.fatigue.push(result.score);
+        chartData.ear.push(result.raw.ear);
+        chartData.blink.push(result.raw.blinkRate);
+        chartData.perclos.push(result.raw.perclos * 100);
+        chartData.gaze.push(result.raw.gazeVar * 100);
+
+        Object.values(chartData).forEach(arr => {
+          if (arr.length > MAX_CHART_POINTS) arr.shift();
+        });
+
+        drawChart('fatigue-chart', chartData.fatigue, 100, 'rgba(126,184,255,1)', true);
+        drawChart('chart-ear', chartData.ear, 0.5, 'rgba(92,224,160,1)', false);
+        drawChart('chart-blink', chartData.blink, 40, 'rgba(167,139,250,1)', false);
+        drawChart('chart-perclos', chartData.perclos, 30, 'rgba(245,166,35,1)', false);
+        drawChart('chart-gaze', chartData.gaze, 100, 'rgba(240,102,102,1)', false);
+      }
+
+      // ══════════════════════════════════════════════════
+      //  UI UPDATER
+      // ══════════════════════════════════════════════════
+      function scoreColor(score) {
+        if (score < 25) return 'good';
+        if (score < 50) return 'ok';
+        if (score < 75) return 'warn';
+        return 'bad';
+      }
+      function scoreLabel(score) {
+        if (score < 20) return '정상 — 눈 상태 양호';
+        if (score < 40) return '경미 — 약간의 피로 징후';
+        if (score < 60) return '보통 — 휴식 권장';
+        if (score < 80) return '높음 — 눈 휴식 필요';
+        return '매우 높음 — 즉시 휴식하세요';
+      }
+
+      function updateUI(result) {
+        const c = scoreColor(result.score);
+
+        // Hero score
+        document.getElementById('hero-score').textContent = result.score;
+
+        // Gauge
+        const fNum = document.getElementById('fatigue-num');
+        fNum.textContent = result.score;
+        fNum.className = 'gauge-score c-' + c;
+        document.getElementById('gauge-bar-fill').style.width = result.score + '%';
+        document.getElementById('gauge-bar-fill').style.background =
+          c === 'good' ? '#5ce0a0' : c === 'ok' ? '#7eb8ff' : c === 'warn' ? '#f5a623' : '#f06';
+        document.getElementById('fatigue-status').textContent = scoreLabel(result.score);
+
+        // Metrics
+        document.getElementById('m-ear').textContent = result.raw.ear.toFixed(3);
+        const earDelta = baselineRef.ear > 0 ? ((result.raw.ear / baselineRef.ear - 1) * 100).toFixed(1) : '—';
+        document.getElementById('m-ear-delta').textContent = (earDelta > 0 ? '+' : '') + earDelta + '%';
+        document.getElementById('bar-ear').style.width = Math.min(result.components.earScore * 100, 100) + '%';
+
+        document.getElementById('m-blink-rate').textContent = result.raw.blinkRate.toFixed(1) + '/분';
+        document.getElementById('m-blink-dur').textContent = result.raw.blinkDur > 0 ? result.raw.blinkDur.toFixed(0) + 'ms' : '—';
+
+        const perclosPercent = (result.raw.perclos * 100).toFixed(1);
+        document.getElementById('m-perclos').textContent = perclosPercent + '%';
+        document.getElementById('bar-perclos').style.width = Math.min(result.components.perclosScore * 100, 100) + '%';
+
+        document.getElementById('m-gaze-var').textContent = (result.raw.gazeVar * 100).toFixed(0) + '%';
+        document.getElementById('bar-gaze').style.width = Math.min(result.components.gazeScore * 100, 100) + '%';
+
+        // Color code all metric bars
+        ['bar-ear','bar-perclos','bar-gaze'].forEach(id => {
+          const el = document.getElementById(id);
+          const w = parseFloat(el.style.width);
+          el.className = 'm-bar-fill bg-' + scoreColor(w);
+        });
+      }
+
+      // Timer display
+      function updateTimer() {
+        if (!sessionStart) return;
+        const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+        const m = Math.floor(elapsed / 60).toString().padStart(2,'0');
+        const s = (elapsed % 60).toString().padStart(2,'0');
+        document.getElementById('session-timer').textContent = m + ':' + s;
+      }
+
+      // ══════════════════════════════════════════════════
+      //  MEDIAPIPE FACE MESH
+      // ══════════════════════════════════════════════════
+      const videoEl = document.getElementById('webcam');
+      const LEFT_IRIS  = [474,475,476,477,473];
+      const RIGHT_IRIS = [469,470,471,472,468];
+      const LEFT_EYE   = [362,385,387,263,373,380];
+      const RIGHT_EYE  = [33,160,158,133,153,144];
+
+      function dist(a,b) { return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2); }
+      function calcEAR(lm,idx) {
+        const p=idx.map(i=>lm[i]);
+        return (dist(p[1],p[5])+dist(p[2],p[4]))/(2*dist(p[0],p[3]));
+      }
+      function irisCenter(lm, indices) {
+        const pts = indices.map(i=>lm[i]);
+        return { x:pts.reduce((s,p)=>s+p.x,0)/pts.length, y:pts.reduce((s,p)=>s+p.y,0)/pts.length };
+      }
+
+      let lastChartUpdate = 0;
+
+      const faceMesh = new FaceMesh({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 1, refineLandmarks: true,
+        minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+      });
+
+      faceMesh.onResults(results => {
+        if (!results.multiFaceLandmarks?.length) return;
+        const lm = results.multiFaceLandmarks[0];
+        const now = Date.now();
+
+        // EAR
+        const earL = calcEAR(lm, LEFT_EYE);
+        const earR = calcEAR(lm, RIGHT_EYE);
+        const ear = (earL + earR) / 2;
+
+        // Iris
+        const iL = irisCenter(lm, LEFT_IRIS);
+        const iR = irisCenter(lm, RIGHT_IRIS);
+        currentIris = { lx:iL.x, ly:iL.y, rx:iR.x, ry:iR.y };
+
+        // Gaze prediction
+        const pred = predictGaze(iL.x, iL.y, iR.x, iR.y);
+        let gazeX = 0, gazeY = 0;
+        if (pred) {
+          const sm = smoothGaze(pred.x, pred.y);
+          gazeX = sm.x; gazeY = sm.y;
+        }
+
+        // PERCLOS frame counting
+        totalFrames++;
+        if (ear < PERCLOS_THRESH) eyeClosedFrames++;
+
+        // Blink detection
+        if (ear < EAR_THRESH && !isBlinking) {
+          isBlinking = true; blinkStart = now; minEARInBlink = ear;
+        } else if (ear < EAR_THRESH && isBlinking) {
+          minEARInBlink = Math.min(minEARInBlink, ear);
+        } else if (ear >= EAR_THRESH && isBlinking) {
+          isBlinking = false;
+          const dur = now - blinkStart;
+          if (dur > 50 && dur < 800) { // valid blink
+            blinkEvents.push({ t: now, duration: dur });
+            if (baselineMode) baseline.blinkDurations.push(dur);
+          }
+          minEARInBlink = 1;
+        }
+
+        // Push to rolling buffers
+        earBuffer.push({ t: now, v: ear });
+        gazeBuffer.push({ t: now, x: gazeX, y: gazeY });
+
+        // Trim old data (keep 2 min)
+        const trimCutoff = now - 120000;
+        earBuffer = earBuffer.filter(e => e.t > trimCutoff);
+        blinkEvents = blinkEvents.filter(e => e.t > trimCutoff);
+        gazeBuffer = gazeBuffer.filter(g => g.t > trimCutoff);
+
+        // Baseline mode
+        if (baselineMode) {
+          baseline.ear.push(ear);
+          baseline.gazeVar.push({ x: gazeX, y: gazeY });
+          const elapsed = (now - baselineStart) / 1000;
+          document.getElementById('baseline-timer').textContent =
+            `자연스럽게 화면을 바라봐 주세요 — ${Math.floor(elapsed)} / ${BASELINE_DURATION}s`;
+          document.getElementById('baseline-bar-fill').style.width = (elapsed / BASELINE_DURATION * 100) + '%';
+          if (elapsed >= BASELINE_DURATION) endBaseline();
+          return;
+        }
+
+        // Compute fatigue & update UI every 2s
+        if (now - lastChartUpdate > 2000) {
+          lastChartUpdate = now;
+          const result = computeFatigue();
+          updateUI(result);
+          updateCharts(result);
+        }
+        updateTimer();
+      });
+
+      const cam = new Camera(videoEl, {
+        onFrame: async () => { await faceMesh.send({ image: videoEl }); },
+        width: 320, height: 240
+      });
+      cam.start();
+    </script>
+  </body>
+</html>

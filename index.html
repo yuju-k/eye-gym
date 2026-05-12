@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Eye Gym</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      font-family: 'Outfit', sans-serif;
+      background: #08090e;
+      color: #e0e4ef;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 40px;
+      background-image:
+        radial-gradient(ellipse at 30% 20%, rgba(126,184,255,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse at 70% 80%, rgba(167,139,250,0.04) 0%, transparent 60%);
+    }
+
+    h1 {
+      font-size: 32px; font-weight: 700; letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #7eb8ff 0%, #a78bfa 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .sub { font-size: 13px; color: rgba(255,255,255,0.3); margin-top: -20px; }
+
+    .cards {
+      display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;
+      max-width: 920px;
+    }
+
+    .card {
+      width: 280px; padding: 32px 28px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      text-decoration: none; color: inherit;
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      cursor: pointer;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .card:hover {
+      border-color: rgba(126,184,255,0.25);
+      background: rgba(126,184,255,0.04);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(126,184,255,0.08);
+    }
+
+    .card .icon { font-size: 36px; }
+    .card .title { font-size: 18px; font-weight: 600; }
+    .card .desc {
+      font-size: 13px; color: rgba(255,255,255,0.35); line-height: 1.7;
+    }
+    .card .tag {
+      display: inline-block; margin-top: 4px;
+      font-size: 11px; padding: 4px 10px; border-radius: 6px;
+      background: rgba(126,184,255,0.1); color: rgba(126,184,255,0.7);
+      width: fit-content;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>👁 Eye Gym</h1>
+  <p class="sub">웹캠 기반 시선 추적 & 안구 피로도 측정 데모</p>
+
+  <div class="cards">
+    <a class="card" href="gaze-tracking.html">
+      <div class="icon">🎯</div>
+      <div class="title">아이트래킹 데모</div>
+      <div class="desc">
+        Iris 기반 시선 추적<br>
+        9포인트 캘리브레이션 후 실시간 시선 위치를 화면에 표시합니다.
+      </div>
+      <div class="tag">MediaPipe Face Mesh + Linear Regression</div>
+    </a>
+
+    <a class="card" href="fatigue-monitor.html">
+      <div class="icon">📊</div>
+      <div class="title">피로도 측정 데모</div>
+      <div class="desc">
+        EAR · 깜빡임 · PERCLOS · 시선 분산도를 복합 분석하여 실시간 피로도 점수를 산출합니다.
+      </div>
+      <div class="tag">5-Factor Composite Fatigue Index</div>
+    </a>
+
+    <a class="card" href="okumong-dashboard.html">
+      <div class="icon">◉</div>
+      <div class="title">오큐몽 대시보드</div>
+      <div class="desc">
+        피그마 아이디어 기반<br>
+        메뉴바 · 실시간 대시보드 · 20-20-20 회복 루틴을 묶은 제품형 프로토타입입니다.
+      </div>
+      <div class="tag">오큐몽 맥 앱 프로토타입</div>
+    </a>
+  </div>
+
+</body>
+</html>

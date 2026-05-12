@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Blink Fatigue Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      overflow: hidden; width: 100vw; height: 100vh;
+      font-family: 'Outfit', sans-serif;
+      background: #08090e; color: #e0e4ef;
+    }
+
+    .screen { display: none; width: 100vw; height: 100vh; }
+    .screen.active { display: flex; }
+
+    /* ── Start Screen ── */
+    #screen-start {
+      flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+      background: radial-gradient(ellipse at 50% 40%, #0f1528 0%, #08090e 70%);
+    }
+    #screen-start .icon { font-size: 48px; margin-bottom: 4px; }
+    #screen-start h1 {
+      font-size: 26px; font-weight: 700; letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #7eb8ff 0%, #a78bfa 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    #screen-start p {
+      font-size: 13px; color: rgba(255,255,255,0.35); text-align: center; line-height: 1.9;
+      max-width: 380px;
+    }
+
+    /* ── Main Screen ── */
+    #screen-main { position: relative; background: #08090e; }
+
+    /* ── Big background score ── */
+    #fatigue-hero {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 10; text-align: center; pointer-events: none; opacity: 0.12;
+    }
+    #fatigue-hero .score {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 180px; font-weight: 700; line-height: 1;
+      background: linear-gradient(180deg, #7eb8ff 0%, #a78bfa 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    #fatigue-hero .label {
+      font-size: 14px; color: rgba(255,255,255,0.4); letter-spacing: 6px;
+      text-transform: uppercase; margin-top: 8px;
+    }
+
+    /* ── Baseline overlay ── */
+    #baseline-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(5,6,18,0.97);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(12px); overflow: hidden;
+    }
+    #baseline-overlay.hidden { display: none; }
+
+    .b-orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(72px); pointer-events: none;
+      animation: orbDrift linear infinite;
+    }
+    @keyframes orbDrift {
+      0%   { transform: translate(0,0); opacity: 0; }
+      12%  { opacity: 1; }
+      88%  { opacity: 0.7; }
+      100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+    }
+
+    #baseline-fact {
+      position: relative; z-index: 2;
+      max-width: 520px; text-align: center;
+      padding: 0 32px;
+      display: flex; flex-direction: column; align-items: center; gap: 18px;
+    }
+    #baseline-fact-icon {
+      font-size: 42px; line-height: 1;
+      animation: gentleBob 3.6s ease-in-out infinite;
+    }
+    @keyframes gentleBob {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-6px); }
+    }
+    #baseline-eyebrow {
+      font-size: 10px; letter-spacing: 3.5px;
+      color: rgba(126,184,255,0.4); text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #baseline-fact-text {
+      font-size: 20px; line-height: 1.65;
+      color: rgba(255,255,255,0.78); font-weight: 400;
+      transition: opacity 0.45s ease;
+      min-height: 72px; display: flex; align-items: center; justify-content: center;
+    }
+    #baseline-fact-text.fade { opacity: 0; }
+
+    #baseline-hint {
+      font-size: 13px;
+      color: rgba(255,255,255,0.28);
+      letter-spacing: 0.5px;
+    }
+
+    #baseline-footer {
+      position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%);
+      z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    }
+    #baseline-footer-row {
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.2); display: flex; align-items: center; gap: 8px;
+    }
+    #baseline-status {
+      font-size: 11px; color: #7eb8ff;
+      font-family: 'JetBrains Mono', monospace; min-height: 16px;
+    }
+    #baseline-bar {
+      width: 180px; height: 2px; border-radius: 1px;
+      background: rgba(255,255,255,0.06); overflow: hidden;
+    }
+    #baseline-bar-fill {
+      height: 100%; width: 0%; border-radius: 1px;
+      background: linear-gradient(90deg, #7eb8ff, #a78bfa);
+      transition: width 0.3s;
+    }
+
+    /* ── Stats Panel ── */
+    #stats-panel {
+      position: fixed; top: 20px; left: 20px;
+      background: rgba(12,14,24,0.85);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px; padding: 20px;
+      z-index: 99; width: 260px;
+      backdrop-filter: blur(12px);
+    }
+    #stats-panel h3 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 3px;
+      color: rgba(255,255,255,0.25); margin-bottom: 16px; font-weight: 600;
+    }
+    .metric {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric .m-label { font-size: 12px; color: rgba(255,255,255,0.4); }
+    .metric .m-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px; font-weight: 600;
+    }
+    .metric .m-bar {
+      width: 50px; height: 4px; border-radius: 2px;
+      background: rgba(255,255,255,0.06); overflow: hidden; margin-left: 8px;
+    }
+    .metric .m-bar-fill {
+      height: 100%; border-radius: 2px;
+      transition: width 0.5s, background 0.5s;
+    }
+
+    .c-good { color: #5ce0a0; }
+    .c-ok   { color: #7eb8ff; }
+    .c-warn { color: #f5a623; }
+    .c-bad  { color: #f06; }
+    .bg-good { background: #5ce0a0; }
+    .bg-ok   { background: #7eb8ff; }
+    .bg-warn { background: #f5a623; }
+    .bg-bad  { background: #f06; }
+
+    /* ── Fatigue gauge ── */
+    #fatigue-gauge {
+      margin-top: 16px; padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    #fatigue-gauge .gauge-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 10px;
+    }
+    #fatigue-gauge .gauge-label { font-size: 12px; color: rgba(255,255,255,0.5); font-weight: 500; }
+    #fatigue-gauge .gauge-score {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px; font-weight: 700;
+    }
+    #gauge-bar {
+      width: 100%; height: 8px; border-radius: 4px;
+      background: rgba(255,255,255,0.04); overflow: hidden;
+    }
+    #gauge-bar-fill {
+      height: 100%; border-radius: 4px; width: 0%;
+      transition: width 0.6s ease, background 0.6s;
+    }
+    #fatigue-status {
+      font-size: 11px; margin-top: 8px; color: rgba(255,255,255,0.3);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Chart Panel ── */
+    #chart-panel {
+      position: fixed; top: 20px; right: 20px;
+      background: rgba(12,14,24,0.85);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px; padding: 20px;
+      z-index: 99; width: 380px;
+      backdrop-filter: blur(12px);
+    }
+    #chart-panel h3 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 3px;
+      color: rgba(255,255,255,0.25); margin-bottom: 12px; font-weight: 600;
+    }
+    #fatigue-chart { width: 100%; height: 140px; border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; background: rgba(0,0,0,0.2); }
+    .sub-charts {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px;
+    }
+    .sub-chart-wrap {
+      background: rgba(0,0,0,0.15); border-radius: 8px; padding: 10px;
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+    .sub-chart-wrap .sc-label {
+      font-size: 10px; color: rgba(255,255,255,0.3); margin-bottom: 6px;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .sub-chart-wrap canvas { width: 100%; height: 60px; }
+
+    /* ── Webcam ── */
+    #webcam-wrap {
+      position: fixed; bottom: 20px; left: 20px;
+      border-radius: 12px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08); z-index: 99;
+    }
+    #webcam { width: 180px; height: 135px; transform: scaleX(-1); display: block; }
+
+    /* ── Face state indicator ── */
+    #face-state-badge {
+      position: fixed; bottom: 170px; left: 20px;
+      background: rgba(12,14,24,0.85); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px; padding: 6px 12px; z-index: 99;
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.4);
+    }
+
+    /* ── Timer ── */
+    #session-timer {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; color: rgba(255,255,255,0.2); z-index: 99;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 12px 28px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04); color: #e0e4ef; font-size: 14px;
+      cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #7eb8ff, #a78bfa);
+      color: #08090e; border: none; font-weight: 600;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(126,184,255,0.3); }
+    #restart-btn {
+      position: fixed; bottom: 20px; right: 20px; z-index: 99;
+      padding: 8px 16px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(12,14,24,0.8); color: rgba(255,255,255,0.4);
+      cursor: pointer; font-size: 12px; font-family: 'Outfit', sans-serif;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ▸ Start -->
+<div class="screen active" id="screen-start">
+  <div class="icon">👁</div>
+  <h1>Blink Fatigue Demo</h1>
+  <p>
+    웹캠 기반 눈 깜빡임 피로도 측정 데모<br>
+    EAR · 깜빡임 패턴 · PERCLOS를 복합 분석합니다.<br><br>
+    10–30초 베이스라인 수집 → 실시간 모니터링<br>
+    (캘리브레이션 없음 · 시선분산도 제외)
+  </p>
+  <button class="btn btn-primary" onclick="startDemo()">시작하기</button>
+</div>
+
+<!-- ▸ Main -->
+<div class="screen" id="screen-main">
+
+  <div id="fatigue-hero">
+    <div class="score" id="hero-score">0</div>
+    <div class="label">Fatigue Index</div>
+  </div>
+
+  <!-- Baseline overlay -->
+  <div id="baseline-overlay">
+    <!-- 오브는 JS로 생성 -->
+    <div id="baseline-fact">
+      <div id="baseline-fact-icon">👁</div>
+      <div id="baseline-eyebrow">눈에 관한 이야기</div>
+      <div id="baseline-fact-text"></div>
+      <div id="baseline-hint">설정 중 · 화면을 바라봐 주세요</div>
+    </div>
+    <div id="baseline-footer">
+      <div id="baseline-footer-row">
+        <span id="baseline-timer-text">0s</span>
+        <span>·</span>
+        <span id="baseline-status"></span>
+      </div>
+      <div id="baseline-bar"><div id="baseline-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Stats Panel -->
+  <div id="stats-panel">
+    <h3>실시간 지표</h3>
+
+    <div class="metric">
+      <span class="m-label">눈 개방도 (EAR)</span>
+      <span class="m-value c-ok" id="m-ear">—</span>
+    </div>
+    <div class="metric">
+      <span class="m-label">베이스라인 EAR</span>
+      <span class="m-value" style="color:rgba(255,255,255,0.3)" id="m-ear-base">—</span>
+    </div>
+    <div class="metric">
+      <span class="m-label">EAR 변화율</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="m-value c-ok" id="m-ear-delta">—</span>
+        <div class="m-bar"><div class="m-bar-fill bg-ok" id="bar-ear" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="metric">
+      <span class="m-label">깜빡임 빈도</span>
+      <span class="m-value c-ok" id="m-blink-rate">—</span>
+    </div>
+    <div class="metric">
+      <span class="m-label">깜빡임 지속시간</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="m-value c-ok" id="m-blink-dur">—</span>
+        <div class="m-bar"><div class="m-bar-fill bg-ok" id="bar-blink-dur" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="metric">
+      <span class="m-label">PERCLOS</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="m-value c-ok" id="m-perclos">—</span>
+        <div class="m-bar"><div class="m-bar-fill bg-ok" id="bar-perclos" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div id="fatigue-gauge">
+      <div class="gauge-header">
+        <span class="gauge-label">피로도 종합</span>
+        <span class="gauge-score c-good" id="fatigue-num">0</span>
+      </div>
+      <div id="gauge-bar"><div id="gauge-bar-fill"></div></div>
+      <div id="fatigue-status">베이스라인 수집 대기 중</div>
+    </div>
+  </div>
+
+  <!-- Chart Panel -->
+  <div id="chart-panel">
+    <h3>피로도 추이</h3>
+    <canvas id="fatigue-chart"></canvas>
+    <div class="sub-charts">
+      <div class="sub-chart-wrap">
+        <div class="sc-label">EAR</div>
+        <canvas id="chart-ear"></canvas>
+      </div>
+      <div class="sub-chart-wrap">
+        <div class="sc-label">깜빡임/분</div>
+        <canvas id="chart-blink"></canvas>
+      </div>
+      <div class="sub-chart-wrap">
+        <div class="sc-label">PERCLOS %</div>
+        <canvas id="chart-perclos"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Webcam -->
+  <div id="webcam-wrap">
+    <video id="webcam" autoplay playsinline></video>
+  </div>
+
+  <div id="face-state-badge">얼굴 감지 대기중</div>
+  <div id="session-timer">00:00</div>
+  <button id="restart-btn" onclick="restartBaseline()">베이스라인 재수집</button>
+</div>
+
+<script>
+  // ══════════════════════════════════════════════════
+  //  SCREEN MANAGEMENT
+  // ══════════════════════════════════════════════════
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  // ══════════════════════════════════════════════════
+  //  BASELINE FACTS & ANIMATION
+  // ══════════════════════════════════════════════════
+  const BASELINE_FACTS = [
+    { icon: '👁', text: '인간의 눈은 약 1,000만 가지 색을 구별할 수 있어요.' },
+    { icon: '⚡', text: '눈 깜빡임 한 번은 평균 150~400ms밖에 걸리지 않아요.' },
+    { icon: '🌊', text: '각막은 혈관이 없고 공기에서 직접 산소를 흡수해요.' },
+    { icon: '🦅', text: '독수리의 시력은 인간보다 약 4~8배 더 선명해요.' },
+    { icon: '🌙', text: '어두운 곳에 눈이 완전히 적응하는 데 약 20분이 걸려요.' },
+    { icon: '💧', text: '성인은 하루 평균 10,000~15,000번 눈을 깜빡여요.' },
+    { icon: '🔬', text: '망막에는 약 1억 2천만 개의 빛 감지 세포가 있어요.' },
+    { icon: '🎨', text: '파란 눈과 갈색 눈의 차이는 멜라닌 색소의 양뿐이에요.' },
+    { icon: '🧠', text: '뇌에서 시각 정보를 처리하는 영역이 전체 피질의 30%나 돼요.' },
+    { icon: '🌟', text: '맑은 날 밤, 인간의 눈은 48km 떨어진 촛불도 볼 수 있어요.' },
+    { icon: '🔁', text: '눈 근육은 하루에 약 10만 번 움직이는 신체에서 가장 부지런한 근육이에요.' },
+    { icon: '🐙', text: '문어는 색맹이지만, 피부로 색을 감지한다는 연구가 있어요.' },
+  ];
+  let factIdx = 0, factTimer = null;
+
+  function rotateFact() {
+    const textEl = document.getElementById('baseline-fact-text');
+    const iconEl = document.getElementById('baseline-fact-icon');
+    if (!textEl || !iconEl) return;
+    textEl.classList.add('fade');
+    setTimeout(() => {
+      const f = BASELINE_FACTS[factIdx % BASELINE_FACTS.length];
+      textEl.textContent = f.text; iconEl.textContent = f.icon;
+      textEl.classList.remove('fade'); factIdx++;
+    }, 450);
+  }
+
+  function startFactRotation() {
+    factIdx = Math.floor(Math.random() * BASELINE_FACTS.length);
+    rotateFact();
+    factTimer = setInterval(rotateFact, 4500);
+    createOrbs();
+  }
+
+  function stopFactRotation() {
+    if (factTimer) { clearInterval(factTimer); factTimer = null; }
+  }
+
+  function createOrbs() {
+    const el = document.getElementById('baseline-overlay');
+    el.querySelectorAll('.b-orb').forEach(o => o.remove());
+    const palette = ['rgba(126,184,255,0.28)','rgba(167,139,250,0.22)',
+      'rgba(141,242,193,0.18)','rgba(255,184,106,0.14)','rgba(96,165,250,0.2)'];
+    for (let i = 0; i < 6; i++) {
+      const orb = document.createElement('div');
+      orb.className = 'b-orb';
+      const size = 180 + Math.random() * 260;
+      const dur  = 10 + Math.random() * 12;
+      const tx   = (Math.random() - 0.5) * 480;
+      const ty   = Math.random() > 0.5 ? -(200 + Math.random() * 300) : (200 + Math.random() * 300);
+      orb.style.cssText = [
+        `width:${size}px`, `height:${size}px`,
+        `left:${Math.random() * 88}vw`, `top:${15 + Math.random() * 65}vh`,
+        `background:${palette[i % palette.length]}`,
+        `--tx:${tx}px`, `--ty:${ty}px`,
+        `animation-duration:${dur}s`,
+        `animation-delay:${-(Math.random() * dur)}s`,
+      ].join(';');
+      el.insertBefore(orb, el.firstChild);
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  //  CONSTANTS
+  // ══════════════════════════════════════════════════
+  const EAR_BLINK_THRESH        = 0.21;
+  const EAR_CLOSED_THRESH       = 0.22;
+  const MIN_BASELINE_SEC        = 20;
+  const MAX_BASELINE_SEC        = 60;
+  const CONVERGENCE_WINDOW_SEC  = 8;
+  const CONVERGENCE_THRESHOLD   = 0.025;
+  const ROLLING_SEC             = 60;
+  const LOST_THRESHOLD          = 20;
+  const REENTRY_GRACE           = 45;
+  const EAR_DELTA_MAX           = 0.08;
+
+  // ══════════════════════════════════════════════════
+  //  STATE
+  // ══════════════════════════════════════════════════
+  let baselineActive  = false;
+  let baselineClosing = false;
+  let baselineStart   = 0;
+  let baselineEARSamples = [];
+  let baselineBlinkDurs  = [];
+  let baselineRef        = { ear: 0, blinkRate: 0, blinkDur: 0 };
+
+  let earBuffer       = [];
+  let blinkEvents     = [];
+  let eyeClosedFrames = 0, totalFrames = 0;
+  let isBlinking = false, blinkStartTs = 0, minEARInBlink = 1;
+  let monitoringStartTs = 0;
+  let lastChartUpdate   = 0;
+  let sessionStart      = 0;
+
+  let faceState       = 'LOST';
+  let faceStateFrames = 0;
+  let awayStartTs     = 0;
+  let prevEar         = -1;
+
+  // ══════════════════════════════════════════════════
+  //  BASELINE
+  // ══════════════════════════════════════════════════
+  function checkConvergence(now) {
+    const cutoff = now - CONVERGENCE_WINDOW_SEC * 1000;
+    const recent = baselineEARSamples.filter(s => s.t > cutoff);
+    if (recent.length < 20) return false;
+    const mean = recent.reduce((a, b) => a + b.v, 0) / recent.length;
+    const std  = Math.sqrt(recent.reduce((s, b) => s + (b.v - mean) ** 2, 0) / recent.length);
+    return std < CONVERGENCE_THRESHOLD;
+  }
+
+  function startBaselineCollection() {
+    baselineActive  = true;
+    baselineClosing = false;
+    baselineStart   = Date.now();
+    faceState = 'LOST'; faceStateFrames = 0; prevEar = -1;
+    baselineEARSamples = []; baselineBlinkDurs = [];
+    eyeClosedFrames = 0; totalFrames = 0;
+    earBuffer = []; blinkEvents = [];
+    document.getElementById('baseline-overlay').classList.remove('hidden');
+    document.getElementById('baseline-status').textContent = '';
+    document.getElementById('baseline-bar-fill').style.width = '0%';
+    document.getElementById('fatigue-status').textContent = '베이스라인 수집 중';
+    startFactRotation();
+  }
+
+  function endBaselineCollection() {
+    baselineActive = false;
+    document.getElementById('baseline-overlay').classList.add('hidden');
+    stopFactRotation();
+
+    if (baselineEARSamples.length > 0) {
+      baselineRef.ear = baselineEARSamples.reduce((a, b) => a + b.v, 0) / baselineEARSamples.length;
+    }
+    const actualSec = (Date.now() - baselineStart) / 1000;
+    baselineRef.blinkRate = (baselineBlinkDurs.length / actualSec) * 60;
+    if (baselineBlinkDurs.length > 0) {
+      baselineRef.blinkDur = baselineBlinkDurs.reduce((a, b) => a + b, 0) / baselineBlinkDurs.length;
+    }
+
+    eyeClosedFrames = 0; totalFrames = 0;
+    earBuffer = []; blinkEvents = [];
+    monitoringStartTs = Date.now();
+    document.getElementById('fatigue-status').textContent = '측정 중';
+  }
+
+  function restartBaseline() {
+    startBaselineCollection();
+  }
+
+  // ══════════════════════════════════════════════════
+  //  FATIGUE ENGINE (weights: EAR 0.35 / rate 0.20 / dur 0.20 / PERCLOS 0.25)
+  // ══════════════════════════════════════════════════
+  function computeFatigue() {
+    const now    = Date.now();
+    const cutoff = now - ROLLING_SEC * 1000;
+    const recent = earBuffer.filter(e => e.t > cutoff);
+
+    // 1. EAR change ratio
+    let earScore = 0;
+    let avgEAR   = 0;
+    if (recent.length > 0 && baselineRef.ear > 0) {
+      avgEAR   = recent.reduce((s, e) => s + e.v, 0) / recent.length;
+      earScore = Math.max(0, Math.min(1, (1 - avgEAR / baselineRef.ear) * 5));
+    }
+
+    // 2. Blink rate deviation
+    const recentBlinks  = blinkEvents.filter(e => e.t > cutoff);
+    const actualElapsed = Math.max(1, (now - monitoringStartTs) / 1000);
+    const windowSec     = Math.min(actualElapsed, ROLLING_SEC);
+    const curRate       = (recentBlinks.length / windowSec) * 60;
+    let blinkRateScore  = 0;
+    if (baselineRef.blinkRate > 0 && actualElapsed > 10) {
+      blinkRateScore = Math.max(0, Math.min(1, Math.abs(curRate / baselineRef.blinkRate - 1) * 1.5));
+    }
+
+    // 3. Blink duration change
+    let blinkDurScore = 0;
+    let avgDur        = 0;
+    if (recentBlinks.length > 0 && baselineRef.blinkDur > 0) {
+      avgDur        = recentBlinks.reduce((s, e) => s + e.duration, 0) / recentBlinks.length;
+      blinkDurScore = Math.max(0, Math.min(1, (avgDur / baselineRef.blinkDur - 1) * 2));
+    }
+
+    // 4. PERCLOS
+    const perclosVal   = totalFrames > 0 ? eyeClosedFrames / totalFrames : 0;
+    const perclosScore = Math.max(0, Math.min(1, perclosVal * 5));
+
+    const fatigue = earScore * 0.35 + blinkRateScore * 0.20 + blinkDurScore * 0.20 + perclosScore * 0.25;
+    return {
+      score: Math.round(Math.max(0, Math.min(100, fatigue * 100))),
+      components: { earScore, blinkRateScore, blinkDurScore, perclosScore },
+      raw: { ear: avgEAR, blinkRate: curRate, blinkDur: avgDur, perclos: perclosVal }
+    };
+  }
+
+  // ══════════════════════════════════════════════════
+  //  CHART DRAWING
+  // ══════════════════════════════════════════════════
+  function drawChart(canvasId, data, maxVal, color, filled) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width = canvas.offsetWidth * 2;
+    const H = canvas.height = canvas.offsetHeight * 2;
+    ctx.clearRect(0, 0, W, H);
+    if (data.length < 2) return;
+
+    const pad = 4, drawW = W - pad*2, drawH = H - pad*2;
+
+    if (filled) {
+      ctx.beginPath();
+      data.forEach((d, i) => {
+        const x = pad + (i / (data.length-1)) * drawW;
+        const y = pad + drawH - (Math.min(d, maxVal) / maxVal) * drawH;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.lineTo(pad + drawW, pad + drawH);
+      ctx.lineTo(pad, pad + drawH);
+      ctx.closePath();
+      ctx.fillStyle = color.replace('1)', '0.15)');
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    data.forEach((d, i) => {
+      const x = pad + (i / (data.length-1)) * drawW;
+      const y = pad + drawH - (Math.min(d, maxVal) / maxVal) * drawH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  let chartData = { fatigue: [], ear: [], blink: [], perclos: [] };
+  const MAX_CHART_POINTS = 90;
+
+  function updateCharts(result) {
+    chartData.fatigue.push(result.score);
+    chartData.ear.push(result.raw.ear);
+    chartData.blink.push(result.raw.blinkRate);
+    chartData.perclos.push(result.raw.perclos * 100);
+
+    Object.values(chartData).forEach(arr => { if (arr.length > MAX_CHART_POINTS) arr.shift(); });
+
+    drawChart('fatigue-chart', chartData.fatigue, 100,  'rgba(126,184,255,1)', true);
+    drawChart('chart-ear',     chartData.ear,     0.5,  'rgba(92,224,160,1)',  false);
+    drawChart('chart-blink',   chartData.blink,   40,   'rgba(167,139,250,1)', false);
+    drawChart('chart-perclos', chartData.perclos, 30,   'rgba(245,166,35,1)',  false);
+  }
+
+  // ══════════════════════════════════════════════════
+  //  UI UPDATER
+  // ══════════════════════════════════════════════════
+  function scoreColor(score) {
+    if (score < 25) return 'good';
+    if (score < 50) return 'ok';
+    if (score < 75) return 'warn';
+    return 'bad';
+  }
+  function scoreLabel(score) {
+    if (score < 20) return '정상 — 눈 상태 양호';
+    if (score < 40) return '경미 — 약간의 피로 징후';
+    if (score < 60) return '보통 — 휴식 권장';
+    if (score < 80) return '높음 — 눈 휴식 필요';
+    return '매우 높음 — 즉시 휴식하세요';
+  }
+  function barColor(score) {
+    return score < 25 ? '#5ce0a0' : score < 50 ? '#7eb8ff' : score < 75 ? '#f5a623' : '#f06';
+  }
+
+  function updateUI(result) {
+    const c = scoreColor(result.score);
+
+    document.getElementById('hero-score').textContent = result.score;
+
+    const fNum = document.getElementById('fatigue-num');
+    fNum.textContent = result.score;
+    fNum.className   = 'gauge-score c-' + c;
+    const fill = document.getElementById('gauge-bar-fill');
+    fill.style.width      = result.score + '%';
+    fill.style.background = barColor(result.score);
+    document.getElementById('fatigue-status').textContent = scoreLabel(result.score);
+
+    const earEl = document.getElementById('m-ear');
+    earEl.textContent = result.raw.ear > 0 ? result.raw.ear.toFixed(3) : '—';
+    document.getElementById('m-ear-base').textContent = baselineRef.ear > 0 ? baselineRef.ear.toFixed(3) : '—';
+
+    const earDelta = baselineRef.ear > 0 && result.raw.ear > 0
+      ? ((result.raw.ear / baselineRef.ear - 1) * 100).toFixed(1)
+      : null;
+    const earDeltaEl = document.getElementById('m-ear-delta');
+    earDeltaEl.textContent = earDelta !== null ? (earDelta > 0 ? '+' : '') + earDelta + '%' : '—';
+    const barEar = document.getElementById('bar-ear');
+    barEar.style.width = Math.min(result.components.earScore * 100, 100) + '%';
+    barEar.style.background = barColor(result.components.earScore * 100);
+
+    document.getElementById('m-blink-rate').textContent = result.raw.blinkRate.toFixed(1) + '/분';
+
+    const durEl = document.getElementById('m-blink-dur');
+    durEl.textContent = result.raw.blinkDur > 0 ? result.raw.blinkDur.toFixed(0) + 'ms' : '—';
+    const barDur = document.getElementById('bar-blink-dur');
+    barDur.style.width = Math.min(result.components.blinkDurScore * 100, 100) + '%';
+    barDur.style.background = barColor(result.components.blinkDurScore * 100);
+
+    const perclosPercent = (result.raw.perclos * 100).toFixed(1);
+    document.getElementById('m-perclos').textContent = perclosPercent + '%';
+    const barPerclos = document.getElementById('bar-perclos');
+    barPerclos.style.width = Math.min(result.components.perclosScore * 100, 100) + '%';
+    barPerclos.style.background = barColor(result.components.perclosScore * 100);
+  }
+
+  function updateTimer() {
+    if (!sessionStart) return;
+    const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+    const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const s = (elapsed % 60).toString().padStart(2, '0');
+    document.getElementById('session-timer').textContent = m + ':' + s;
+  }
+
+  // ══════════════════════════════════════════════════
+  //  MEDIAPIPE FACE MESH
+  // ══════════════════════════════════════════════════
+  const videoEl = document.getElementById('webcam');
+  const L_EYE   = [362, 385, 387, 263, 373, 380];
+  const R_EYE   = [33,  160, 158, 133, 153, 144];
+
+  function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2); }
+  function calcEAR(lm, idx) {
+    const p = idx.map(i => lm[i]);
+    return (dist(p[1], p[5]) + dist(p[2], p[4])) / (2 * dist(p[0], p[3]));
+  }
+
+  const faceMesh = new FaceMesh({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+  });
+  faceMesh.setOptions({
+    maxNumFaces: 1, refineLandmarks: true,
+    minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+  });
+
+  faceMesh.onResults(results => {
+    if (!baselineActive && monitoringStartTs === 0) return;
+    const now = Date.now();
+
+    // ── Face not detected ──────────────────────────────
+    if (!results.multiFaceLandmarks?.length) {
+      if (faceState === 'TRACKING') {
+        faceStateFrames++;
+        if (faceStateFrames >= LOST_THRESHOLD) {
+          faceState = 'LOST'; faceStateFrames = 0;
+          awayStartTs = now; prevEar = -1; isBlinking = false;
+          document.getElementById('face-state-badge').textContent = '얼굴 이탈 감지';
+        }
+      } else if (faceState === 'RETURNING') {
+        faceState = 'LOST'; faceStateFrames = 0;
+        awayStartTs = now; prevEar = -1;
+      }
+      return;
+    }
+
+    // ── Re-entry handling ──────────────────────────────
+    if (faceState === 'LOST') {
+      faceState = 'RETURNING'; faceStateFrames = 0;
+      if (baselineActive && awayStartTs > 0) baselineStart += (now - awayStartTs);
+      awayStartTs = 0;
+      document.getElementById('face-state-badge').textContent = '재진입 대기중';
+    }
+    if (faceState === 'RETURNING') {
+      faceStateFrames++;
+      if (faceStateFrames < REENTRY_GRACE) return;
+      faceState = 'TRACKING'; faceStateFrames = 0;
+      document.getElementById('face-state-badge').textContent = '추적 중';
+    }
+
+    const lm   = results.multiFaceLandmarks[0];
+    const earL = calcEAR(lm, L_EYE);
+    const earR = calcEAR(lm, R_EYE);
+    const ear  = (earL + earR) / 2;
+
+    // ── EAR delta filter ───────────────────────────────
+    if (prevEar >= 0 && Math.abs(ear - prevEar) > EAR_DELTA_MAX) {
+      prevEar = ear;
+      return;
+    }
+    prevEar = ear;
+
+    totalFrames++;
+    if (ear < EAR_CLOSED_THRESH) eyeClosedFrames++;
+
+    // Blink detection
+    if (ear < EAR_BLINK_THRESH && !isBlinking) {
+      isBlinking = true; blinkStartTs = now; minEARInBlink = ear;
+    } else if (ear < EAR_BLINK_THRESH && isBlinking) {
+      minEARInBlink = Math.min(minEARInBlink, ear);
+    } else if (ear >= EAR_BLINK_THRESH && isBlinking) {
+      isBlinking = false;
+      const dur = now - blinkStartTs;
+      if (dur > 50 && dur < 800) {
+        blinkEvents.push({ t: now, duration: dur });
+        if (baselineActive) baselineBlinkDurs.push(dur);
+      }
+      minEARInBlink = 1;
+    }
+
+    // 깜빡임 중이 아닌 프레임만 earBuffer에 저장 (baseline과 동일 조건으로 비교)
+    if (!isBlinking) {
+      earBuffer.push({ t: now, v: ear });
+      if (baselineActive) baselineEARSamples.push({ t: now, v: ear });
+    }
+
+    const trim = now - 120000;
+    earBuffer   = earBuffer.filter(e => e.t > trim);
+    blinkEvents = blinkEvents.filter(e => e.t > trim);
+
+    // ── Baseline mode ──────────────────────────────────
+    if (baselineActive) {
+      const elapsed = (now - baselineStart) / 1000;
+      document.getElementById('baseline-timer-text').textContent =
+        Math.floor(elapsed) + 's';
+      document.getElementById('baseline-bar-fill').style.width =
+        Math.min(elapsed / MAX_BASELINE_SEC * 100, 100) + '%';
+
+      if (!baselineClosing) {
+        if (elapsed >= MIN_BASELINE_SEC && checkConvergence(now)) {
+          baselineClosing = true;
+          document.getElementById('baseline-status').textContent = '✓ 안정화 완료!';
+          setTimeout(endBaselineCollection, 500);
+        } else if (elapsed >= MAX_BASELINE_SEC) {
+          endBaselineCollection();
+        } else if (elapsed >= MIN_BASELINE_SEC) {
+          document.getElementById('baseline-status').textContent = '안정화 확인 중...';
+        }
+      }
+      return;
+    }
+
+    // ── Monitoring: update every 2s ────────────────────
+    if (now - lastChartUpdate > 2000) {
+      lastChartUpdate = now;
+      const result = computeFatigue();
+      updateUI(result);
+      updateCharts(result);
+    }
+    updateTimer();
+  });
+
+  // ══════════════════════════════════════════════════
+  //  ENTRY POINT
+  // ══════════════════════════════════════════════════
+  function startDemo() {
+    showScreen('screen-main');
+    sessionStart = Date.now();
+    startBaselineCollection();
+  }
+
+  const cam = new Camera(videoEl, {
+    onFrame: async () => { await faceMesh.send({ image: videoEl }); },
+    width: 320, height: 240
+  });
+  cam.start();
+</script>
+</body>
+</html>
