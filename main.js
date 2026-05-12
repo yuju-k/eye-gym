@@ -1,5 +1,6 @@
 const { app, BrowserWindow, screen, session, Tray, Menu, nativeImage, ipcMain } = require('electron');
 const path = require('path');
+const notifier = require('node-notifier');
 
 let win = null;
 let popupWin = null;
@@ -60,6 +61,7 @@ function createWindow() {
 
   win.loadFile('okumong-dashboard.html');
   win.once('ready-to-show', () => win.show());
+  win.webContents.setBackgroundThrottling(false);
 
   win.on('close', (e) => {
     e.preventDefault();
@@ -142,6 +144,19 @@ ipcMain.on('show-dashboard', (_event, view) => {
 ipcMain.handle('set-dim-overlay', (_event, { opacity }) => {
   fadeDimOverlay(opacity);
 });
+
+ipcMain.on('show-notification', (_event, { title, body, navigateTo }) => {
+  notifier.notify({ title, message: body, sound: true, wait: !!navigateTo }, (err, res) => {
+    if (navigateTo && res === 'activate') {
+      if (win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+        win.webContents.send('navigate', navigateTo);
+      }
+    }
+  });
+});
+
 
 
 ipcMain.on('quit-app', () => app.exit());

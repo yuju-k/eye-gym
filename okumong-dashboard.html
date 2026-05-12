@@ -2986,8 +2986,14 @@
         state.blinkRate      = Math.max(0, Math.round(result.raw.blinkRate));
         state.incompleteRate = totalBlinks > 0 ? Math.round(incompleteBlinks / totalBlinks * 100) : 0;
 
-        if (prevScore >= 60 && state.score < 60) pushSessionEvent('warn',   '깜빡임 저하, 피로 증가 감지');
-        if (prevScore >= 35 && state.score < 35) pushSessionEvent('danger', '높은 피로도 — 휴식 권장');
+        if (prevScore >= 60 && state.score < 60) {
+          pushSessionEvent('warn', '깜빡임 저하, 피로 증가 감지');
+          window.electronAPI?.showNotification('오큐몽 — 눈 피로 감지', '깜빡임이 줄어들고 있어요. 잠깐 눈을 쉬어보세요.', null);
+        }
+        if (prevScore >= 35 && state.score < 35) {
+          pushSessionEvent('danger', '높은 피로도 — 휴식 권장');
+          window.electronAPI?.showNotification('오큐몽 — 눈 피로도 심각', '지금 바로 20-20-20 루틴을 시작해보세요. 클릭하면 이동합니다.', 'exercises');
+        }
 
         render();
         updateDetailView(result);
@@ -3020,6 +3026,7 @@
     if (window.electronAPI) {
       window.electronAPI.onNavigate(view => setView(view));
     }
+
 
     // ── 개발용 디버그 단축키 (Shift+1~4) ──────────────────
     document.addEventListener('keydown', (e) => {
