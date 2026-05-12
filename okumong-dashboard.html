@@ -447,6 +447,7 @@
       flex: 1;
       min-height: 280px;
       padding: 21px;
+      overflow: hidden;
     }
 
     .events {
@@ -454,7 +455,15 @@
       flex-direction: column;
       gap: 13px;
       margin-top: 20px;
+      max-height: 320px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.1) transparent;
     }
+
+    .events::-webkit-scrollbar { width: 4px; }
+    .events::-webkit-scrollbar-track { background: transparent; }
+    .events::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
 
     .event {
       display: grid;
@@ -1963,77 +1972,36 @@
           <div>
             <div class="summary-grid">
               <article class="card summary-card">
-                <div class="card-label"><span>평균 점수</span><span>◉</span></div>
-                <strong style="color: var(--orange);">74</strong>
-                <small>어제보다 6점 낮아요</small>
+                <div class="card-label"><span>평균 피로도</span><span>◉</span></div>
+                <strong id="logs-avg-fatigue" style="color: var(--orange);">—</strong>
+                <small id="logs-avg-fatigue-sub">오늘 측정 데이터 없음</small>
               </article>
               <article class="card summary-card">
                 <div class="card-label"><span>완료한 휴식</span><span>✓</span></div>
-                <strong style="color: var(--green);">5</strong>
-                <small>권장 휴식 7회 중 5회 완료</small>
+                <strong id="logs-recovery-count" style="color: var(--green);">—</strong>
+                <small id="logs-recovery-sub">오늘 회복 루틴</small>
               </article>
               <article class="card summary-card">
                 <div class="card-label"><span>주의 신호</span><span>△</span></div>
-                <strong style="color: var(--red);">3</strong>
-                <small>깜빡임 저하 2회, 미세 졸림 1회</small>
+                <strong id="logs-warn-count" style="color: var(--red);">—</strong>
+                <small id="logs-warn-sub">경고 및 위험 이벤트</small>
               </article>
             </div>
 
             <article class="card chart-card">
-              <div class="card-label"><span>컨디션 변화</span><span>오늘</span></div>
-              <div class="chart" aria-label="컨디션 변화 차트">
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="scoreFill" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stop-color="#44aaff" stop-opacity="0.28" />
-                      <stop offset="100%" stop-color="#44aaff" stop-opacity="0" />
-                    </linearGradient>
-                    <linearGradient id="blinkFill" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stop-color="#ffb86a" stop-opacity="0.24" />
-                      <stop offset="100%" stop-color="#ffb86a" stop-opacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M0,100 L0,28 C8,30 12,36 18,34 C28,30 30,18 40,21 C50,24 52,45 62,47 C72,50 75,31 84,35 C91,38 96,25 100,24 L100,100 Z" fill="url(#scoreFill)" />
-                  <path d="M0,28 C8,30 12,36 18,34 C28,30 30,18 40,21 C50,24 52,45 62,47 C72,50 75,31 84,35 C91,38 96,25 100,24" fill="none" stroke="#44aaff" stroke-width="1.6" vector-effect="non-scaling-stroke" />
-                  <path d="M0,100 L0,62 C10,58 18,66 27,59 C37,51 44,55 52,63 C62,73 70,70 78,58 C87,44 94,49 100,42 L100,100 Z" fill="url(#blinkFill)" />
-                  <path d="M0,62 C10,58 18,66 27,59 C37,51 44,55 52,63 C62,73 70,70 78,58 C87,44 94,49 100,42" fill="none" stroke="#ffb86a" stroke-width="1.6" vector-effect="non-scaling-stroke" />
-                </svg>
-                <div class="chart-labels">
-                  <span>09:00</span><span>11:00</span><span>13:00</span><span>15:00</span><span>17:00</span>
-                </div>
-              </div>
-              <div class="legend">
-                <span><i></i>컨디션 점수</span>
-                <span class="orange"><i></i>깜빡임 안정도</span>
+              <div class="card-label"><span>피로도 변화</span><span>오늘</span></div>
+              <div class="chart" style="position:relative;">
+                <canvas id="logs-fatigue-chart" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+                <div id="logs-chart-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px;">측정 데이터가 쌓이면 표시됩니다</div>
               </div>
             </article>
           </div>
 
           <div class="stack">
             <article class="card insight-card">
-              <div class="card-label"><span>오늘의 인사이트</span><span>✦</span></div>
-              <div class="insight-list">
-                <div class="insight">
-                  <div class="insight-icon">◷</div>
-                  <div>
-                    <h4>오후 2시 이후 피로 신호 증가</h4>
-                    <p>점심 이후 깜빡임 빈도가 평균 18% 낮아졌습니다.</p>
-                  </div>
-                </div>
-                <div class="insight">
-                  <div class="insight-icon">✓</div>
-                  <div>
-                    <h4>휴식 후 12분간 회복 유지</h4>
-                    <p>20초 루틴 이후 컨디션 점수가 평균 8점 상승했습니다.</p>
-                  </div>
-                </div>
-                <div class="insight">
-                  <div class="insight-icon">△</div>
-                  <div>
-                    <h4>불완전 깜빡임 비율 높음</h4>
-                    <p>집중 작업 구간에서 눈 감김 폭이 얕아지는 패턴이 보입니다.</p>
-                  </div>
-                </div>
+              <div class="card-label"><span>오늘의 요약</span><span>✦</span></div>
+              <div class="insight-list" id="logs-insights">
+                <div class="insight"><div class="insight-icon">◷</div><div><h4>아직 데이터가 없어요</h4><p>측정을 시작하면 오늘의 요약이 여기 표시됩니다.</p></div></div>
               </div>
             </article>
 
@@ -2387,7 +2355,18 @@
       welcomeActive = false;
       state.running = true;
       document.getElementById('welcome-overlay').classList.remove('open');
-      startBaselineCollection();
+      if (baselineRef.ear > 0) {
+        // 오늘 베이스라인 재사용 — 바로 측정
+        monitoringStartTs = Date.now();
+        detailSessionStart = Date.now();
+        smoothedScore = 100;
+        state.score = 100;
+        document.getElementById('monitoring-state').textContent = '측정 중';
+        document.getElementById('d-fatigue-status').textContent = '측정 중';
+        pushSessionEvent('', '오늘 베이스라인 재사용, 측정 시작');
+      } else {
+        startBaselineCollection();
+      }
     });
 
     document.getElementById("notify-button").addEventListener("click", () => {
@@ -2410,9 +2389,11 @@
           : warmupActive ? '베이스라인 안정화 중'
           : '측정 중';
         document.getElementById("monitoring-state").textContent = stateText;
+        pushSessionEvent('', '측정 재개');
       } else {
         pausedAt = Date.now();
         document.getElementById("monitoring-state").textContent = "측정 일시정지됨";
+        pushSessionEvent('', '측정 일시정지');
       }
     });
 
@@ -2679,6 +2660,152 @@
 
     const sessionEventsList = [];
 
+    function buildSessionSummary() {
+      const scores = rawDataLog.map(r => r.fatigue_score).filter(s => typeof s === 'number');
+      const avgFatigue  = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      const peakFatigue = scores.length > 0 ? Math.max(...scores) : 0;
+      const warnCount   = sessionEventsList.filter(e => e.type === 'warn').length;
+      const dangerCount = sessionEventsList.filter(e => e.type === 'danger').length;
+      const recoveryCount = sessionEventsList.filter(e => e.msg.includes('루틴 완료')).length;
+      const measureDurationMin = monitoringStartTs > 0 ? Math.round((Date.now() - monitoringStartTs) / 60000) : 0;
+      return { avgFatigue, peakFatigue, warnCount, dangerCount, recoveryCount, measureDurationMin };
+    }
+
+    let _savedEventsFromFile = []; // 파일에서 로드한 이전 이벤트 (중복 방지용)
+
+    async function saveSession() {
+      const today = new Date().toISOString().slice(0, 10);
+      // 이전 저장 이벤트 + 현재 세션 이벤트를 시간순 합산
+      const allEvents = [..._savedEventsFromFile, ...sessionEventsList]
+        .sort((a, b) => a.ts - b.ts);
+      const data = {
+        date: today,
+        savedAt: new Date().toISOString(),
+        summary: buildSessionSummary(),
+        events: allEvents,
+        dataLog: rawDataLog,
+        baselineRef,
+      };
+      await window.electronAPI?.saveSession(today, data);
+    }
+
+    function drawLogsChart(dataLog) {
+      const canvas = document.getElementById('logs-fatigue-chart');
+      const emptyMsg = document.getElementById('logs-chart-empty');
+      const validData = dataLog.filter(r => typeof r.fatigue_score === 'number');
+      if (validData.length < 2) { emptyMsg.style.display = 'flex'; return; }
+      emptyMsg.style.display = 'none';
+      const dpr = window.devicePixelRatio || 2;
+      canvas.width  = canvas.offsetWidth  * dpr;
+      canvas.height = canvas.offsetHeight * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = canvas.offsetWidth, H = canvas.offsetHeight;
+      const pad = { t: 12, r: 12, b: 28, l: 8 };
+      const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+      ctx.clearRect(0, 0, W, H);
+
+      const toX = (i) => pad.l + (i / (validData.length - 1)) * cW;
+      const toY = (v) => pad.t + (1 - v / 100) * cH;
+
+      // fill
+      ctx.beginPath();
+      ctx.moveTo(toX(0), toY(validData[0].fatigue_score));
+      validData.forEach((r, i) => ctx.lineTo(toX(i), toY(r.fatigue_score)));
+      ctx.lineTo(toX(validData.length - 1), pad.t + cH);
+      ctx.lineTo(toX(0), pad.t + cH);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + cH);
+      grad.addColorStop(0, 'rgba(255,140,80,0.3)');
+      grad.addColorStop(1, 'rgba(255,140,80,0)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // line
+      ctx.beginPath();
+      validData.forEach((r, i) => i === 0 ? ctx.moveTo(toX(i), toY(r.fatigue_score)) : ctx.lineTo(toX(i), toY(r.fatigue_score)));
+      ctx.strokeStyle = '#ff8c50';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+
+      // x-axis time labels (최대 5개)
+      const step = Math.ceil(validData.length / 5);
+      ctx.fillStyle = 'rgba(148,163,184,0.7)';
+      ctx.font = `10px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      validData.forEach((r, i) => {
+        if (i % step !== 0 && i !== validData.length - 1) return;
+        const label = new Date(r.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        ctx.fillText(label, toX(i), H - 6);
+      });
+    }
+
+    function renderInsights(summary) {
+      const el = document.getElementById('logs-insights');
+      const items = [];
+      if (summary.avgFatigue > 0) {
+        const level = summary.avgFatigue >= 60 ? '높은' : summary.avgFatigue >= 35 ? '중간' : '낮은';
+        items.push({ icon: '◉', title: `평균 피로도 ${summary.avgFatigue}점 (${level} 수준)`, desc: `오늘 최고 피로도 ${summary.peakFatigue}점 기록` });
+      }
+      if (summary.warnCount + summary.dangerCount > 0) {
+        items.push({ icon: '△', title: `피로 신호 총 ${summary.warnCount + summary.dangerCount}회 감지`, desc: `경고 ${summary.warnCount}회, 위험 ${summary.dangerCount}회` });
+      }
+      if (summary.recoveryCount > 0) {
+        items.push({ icon: '✓', title: `회복 루틴 ${summary.recoveryCount}회 완료`, desc: `20-20-20 루틴으로 눈 피로를 해소했습니다` });
+      }
+      if (summary.measureDurationMin > 0) {
+        items.push({ icon: '◷', title: `총 ${summary.measureDurationMin}분 측정`, desc: `오늘 하루 측정 누적 시간` });
+      }
+      if (items.length === 0) {
+        el.innerHTML = '<div class="insight"><div class="insight-icon">◷</div><div><h4>아직 데이터가 없어요</h4><p>측정을 시작하면 오늘의 요약이 여기 표시됩니다.</p></div></div>';
+        return;
+      }
+      el.innerHTML = items.map(({ icon, title, desc }) =>
+        `<div class="insight"><div class="insight-icon">${icon}</div><div><h4>${title}</h4><p>${desc}</p></div></div>`
+      ).join('');
+    }
+
+    function renderLogsTab(data) {
+      const { summary, dataLog } = data;
+      document.getElementById('logs-avg-fatigue').textContent     = summary.avgFatigue || '—';
+      document.getElementById('logs-avg-fatigue-sub').textContent = `최고 피로도 ${summary.peakFatigue}점`;
+      document.getElementById('logs-recovery-count').textContent  = summary.recoveryCount ?? '—';
+      document.getElementById('logs-recovery-sub').textContent    = `${summary.measureDurationMin}분 측정`;
+      document.getElementById('logs-warn-count').textContent      = (summary.warnCount + summary.dangerCount) ?? '—';
+      document.getElementById('logs-warn-sub').textContent        = `경고 ${summary.warnCount}회, 위험 ${summary.dangerCount}회`;
+      drawLogsChart(dataLog);
+      renderInsights(summary);
+      renderSessionEvents();
+    }
+
+    // 오늘 세션 로드
+    (async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const saved = await window.electronAPI?.loadSession(today);
+      if (saved) {
+        _savedEventsFromFile = saved.events || [];
+        rawDataLog.push(...(saved.dataLog || []));
+        lastDataLogTs = Date.now();
+        if (saved.baselineRef?.ear > 0) {
+          Object.assign(baselineRef, saved.baselineRef);
+          // 웰컴 화면 문구 업데이트
+          document.querySelector('.welcome-desc').innerHTML =
+            `오늘의 베이스라인이 준비되어 있어요.<br>바로 측정을 시작합니다.
+            <em>EAR ${saved.baselineRef.ear.toFixed(3)} · 깜빡임 ${Math.round(saved.baselineRef.blinkRate)}회/분</em>`;
+          document.getElementById('welcome-start-btn').textContent = '측정 시작';
+        }
+        renderLogsTab(saved);
+        renderSessionEvents();
+      }
+    })();
+
+    // 앱 종료 전 저장
+    window.electronAPI?.onBeforeQuit(async () => {
+      pushSessionEvent('', '앱 종료');
+      await saveSession();
+      window.electronAPI?.signalQuitReady();
+    });
+
     function renderSessionEvents() {
       const hm = (ts) => new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
       const makeEl = ({ type, msg, ts }) => {
@@ -2688,15 +2815,20 @@
         return el;
       };
 
-      // 대시보드: 최신 8개
+      // 대시보드: 저장된 이전 + 현재 세션 합산 최신 8개
       const log = document.getElementById('session-log');
       log.innerHTML = '';
-      sessionEventsList.slice(-8).reverse().forEach(e => log.appendChild(makeEl(e)));
+      [..._savedEventsFromFile, ...sessionEventsList]
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, 8)
+        .forEach(e => log.appendChild(makeEl(e)));
 
-      // 기록 탭: 전체 (최신순)
+      // 기록 탭: 저장된 이전 이벤트 + 현재 세션 (최신순)
+      const allEvents = [..._savedEventsFromFile, ...sessionEventsList]
+        .sort((a, b) => b.ts - a.ts);
       const timeline = document.getElementById('timeline-log');
       timeline.innerHTML = '';
-      [...sessionEventsList].reverse().forEach(e => timeline.appendChild(makeEl(e)));
+      allEvents.forEach(e => timeline.appendChild(makeEl(e)));
     }
 
     function pushSessionEvent(type, msg) {
@@ -3102,9 +3234,12 @@
           incomplete_rate: +incRate.toFixed(4),
           perclos:         +result.raw.perclos.toFixed(4),
           delta:           +delta.toFixed(4),
-          score:           state.score,
+          fatigue_score:   result.score,
+          condition_score: state.score,
           phase,
           });
+          saveSession();
+          renderLogsTab({ summary: buildSessionSummary(), events: sessionEventsList, dataLog: rawDataLog });
         }
         state.earLeft        = parseFloat(liveEarL.toFixed(2));
         state.earRight       = parseFloat(liveEarR.toFixed(2));

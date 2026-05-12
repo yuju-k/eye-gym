@@ -121,7 +121,7 @@ function createTray() {
   const menu = Menu.buildFromTemplate([
     { label: '대시보드 열기', click: () => { win.show(); win.focus(); } },
     { type: 'separator' },
-    { label: '종료', click: () => app.exit() },
+    { label: '종료', click: () => app.quit() },
   ]);
 
   // 좌클릭 → 커스텀 팝업, 우클릭 → 네이티브 메뉴
@@ -160,6 +160,20 @@ ipcMain.on('show-notification', (_event, { title, body, navigateTo }) => {
 
 
 
+const sessionsDir = path.join(app.getPath('userData'), 'sessions');
+
+ipcMain.handle('save-session', (_event, dateStr, data) => {
+  if (!fs.existsSync(sessionsDir)) fs.mkdirSync(sessionsDir, { recursive: true });
+  fs.writeFileSync(path.join(sessionsDir, `${dateStr}.json`), JSON.stringify(data), 'utf-8');
+});
+
+ipcMain.handle('load-session', (_event, dateStr) => {
+  const filePath = path.join(sessionsDir, `${dateStr}.json`);
+  if (!fs.existsSync(filePath)) return null;
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf-8')); }
+  catch { return null; }
+});
+
 ipcMain.handle('save-csv', async (_event, csvString) => {
   const defaultName = `okumong-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.csv`;
   const { canceled, filePath } = await dialog.showSaveDialog({
@@ -172,7 +186,7 @@ ipcMain.handle('save-csv', async (_event, csvString) => {
   return { ok: true, filePath };
 });
 
-ipcMain.on('quit-app', () => app.exit());
+ipcMain.on('quit-app', () => app.quit());
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
@@ -189,6 +203,17 @@ app.whenReady().then(() => {
   createPopup();
   createTray();
   createDimOverlay();
+});
+
+app.on('before-quit', (e) => {
+  e.preventDefault();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('before-quit');
+    ipcMain.once('quit-ready', () => app.exit());
+    setTimeout(() => app.exit(), 3000); // 3초 안에 저장 못 하면 강제 종료
+  } else {
+    app.exit();
+  }
 });
 
 app.on('window-all-closed', () => {});
