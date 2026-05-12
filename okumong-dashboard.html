@@ -2105,7 +2105,7 @@
 
             <article class="card detail-gauge">
               <div class="detail-gauge-header">
-                <span class="detail-gauge-label">피로도 종합</span>
+                <span class="detail-gauge-label">현재 피로도</span>
                 <span class="detail-gauge-num" id="d-fatigue-num">—</span>
               </div>
               <div class="detail-gauge-bar">
@@ -2623,7 +2623,7 @@
     const WARMUP_SEC              = 150; // 초기 수집 후 2.5분간 무음 베이스라인 업데이트
     const CONVERGENCE_WINDOW_SEC  = 8;
     const CONVERGENCE_THRESHOLD   = 0.025;
-    const ROLLING_SEC             = 60;
+    const ROLLING_SEC             = 30;
     const LOST_THRESHOLD          = 20;   // 약 0.7초 (30fps 기준)
     const REENTRY_GRACE           = 45;   // 약 1.5초 재진입 대기
     const EAR_DELTA_MAX           = 0.08; // 프레임 간 최대 허용 EAR 변화량
@@ -2742,7 +2742,7 @@
       const recentAll    = allFrameTimes.filter(t => t > cutoff);
       const recentClosed = closedFrameTimes.filter(t => t > cutoff);
       const perclosVal   = recentAll.length > 0 ? recentClosed.length / recentAll.length : 0;
-      const perclosScore = Math.max(0, Math.min(1, perclosVal * 5));
+      const perclosScore = Math.max(0, Math.min(1, perclosVal * 8));
 
       const fatigue = earScore * 0.35 + blinkRateScore * 0.20 + blinkDurScore * 0.20 + perclosScore * 0.25;
       return {
