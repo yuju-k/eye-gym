@@ -135,6 +135,16 @@
       box-shadow: 0 0 18px rgba(143,199,255,0.18);
     }
 
+    .secondary {
+      min-height: 36px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.07);
+      color: var(--dim);
+      font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .secondary:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
     .support {
       display: flex;
       gap: 12px;
@@ -1796,6 +1806,7 @@
 
       <div class="sidebar-footer">
         <button class="primary" id="session-toggle">측정 일시정지</button>
+        <button class="secondary" id="export-csv-btn">CSV 내보내기</button>
         <a class="support" href="index.html"><span>?</span>처음으로</a>
       </div>
     </aside>
@@ -1867,11 +1878,7 @@
 
             <article class="card timeline">
               <div class="card-label"><span>세션 기록</span><span>⌁</span></div>
-              <div class="events" id="session-log">
-                <div class="event danger"><time>14:30</time><i></i><span>순간 졸림 신호 감지</span></div>
-                <div class="event"><time>13:45</time><i></i><span>휴식 완료</span></div>
-                <div class="event warn muted"><time>12:15</time><i></i><span>깜빡임 저하 알림</span></div>
-              </div>
+              <div class="events" id="session-log"></div>
             </article>
           </div>
         </div>
@@ -2032,13 +2039,7 @@
 
             <article class="card timeline">
               <div class="card-label"><span>이벤트 타임라인</span><span>⌁</span></div>
-              <div class="events">
-                <div class="event warn"><time>15:12</time><i></i><span>20-20-20 휴식 권장</span></div>
-                <div class="event"><time>14:58</time><i></i><span>추적 다시 시작</span></div>
-                <div class="event danger"><time>14:30</time><i></i><span>불완전 깜빡임 25% 초과</span></div>
-                <div class="event"><time>13:45</time><i></i><span>휴식 완료</span></div>
-                <div class="event muted"><time>12:15</time><i></i><span>깜빡임 저하 알림</span></div>
-              </div>
+              <div class="events" id="timeline-log"></div>
             </article>
           </div>
         </div>
@@ -2415,6 +2416,20 @@
       }
     });
 
+    document.getElementById("export-csv-btn").addEventListener("click", async () => {
+      if (rawDataLog.length === 0) {
+        alert('아직 수집된 데이터가 없습니다. 측정을 시작한 후 사용하세요.');
+        return;
+      }
+      const headers = Object.keys(rawDataLog[0]);
+      const rows = rawDataLog.map(r => headers.map(h => r[h]).join(','));
+      const csv = [headers.join(','), ...rows].join('\n');
+      const result = await window.electronAPI?.saveCsv(csv);
+      if (result?.ok) {
+        pushSessionEvent('', `데이터 내보내기 완료 (${rawDataLog.length}행)`);
+      }
+    });
+
     function finishRecovery() {
       window.clearInterval(recoveryTimer);
       recoveryTimer = null;
@@ -2630,8 +2645,10 @@
     let totalBlinks     = 0, incompleteBlinks = 0;
     let lastFatigueUpdate = 0;
     let monitoringStartTs = 0;
-    let smoothedScore     = 100; // EMA로 부드럽게 표시되는 점수
-    let welcomeActive     = true; // 웰컴 화면 표시 중엔 측정 차단
+    let smoothedScore     = 100;
+    let welcomeActive     = true;
+    let rawDataLog        = [];
+    let lastDataLogTs     = 0;
     let isBlinking = false, blinkStartTs = 0, minEARInBlink = 1;
     let liveEarL = 0.32, liveEarR = 0.31;
 
@@ -2660,14 +2677,31 @@
       faceLostTimer.textContent = '';
     }
 
-    function pushSessionEvent(type, msg) {
+    const sessionEventsList = [];
+
+    function renderSessionEvents() {
+      const hm = (ts) => new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const makeEl = ({ type, msg, ts }) => {
+        const el = document.createElement('div');
+        el.className = `event ${type}`;
+        el.innerHTML = `<time>${hm(ts)}</time><i></i><span>${msg}</span>`;
+        return el;
+      };
+
+      // 대시보드: 최신 8개
       const log = document.getElementById('session-log');
-      const hm  = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-      const el  = document.createElement('div');
-      el.className = `event ${type}`;
-      el.innerHTML = `<time>${hm}</time><i></i><span>${msg}</span>`;
-      log.insertAdjacentElement('afterbegin', el);
-      while (log.children.length > 8) log.lastChild.remove();
+      log.innerHTML = '';
+      sessionEventsList.slice(-8).reverse().forEach(e => log.appendChild(makeEl(e)));
+
+      // 기록 탭: 전체 (최신순)
+      const timeline = document.getElementById('timeline-log');
+      timeline.innerHTML = '';
+      [...sessionEventsList].reverse().forEach(e => timeline.appendChild(makeEl(e)));
+    }
+
+    function pushSessionEvent(type, msg) {
+      sessionEventsList.push({ type, msg, ts: Date.now() });
+      renderSessionEvents();
     }
 
     function checkConvergence(now) {
@@ -3050,6 +3084,28 @@
         const sensitivityMult = settings.sensitivity / 5;
         smoothedScore = Math.max(0, Math.min(100, smoothedScore + delta * sensitivityMult));
         state.score   = Math.round(smoothedScore);
+
+        const phase = baselineActive ? 'baseline' : warmupActive ? 'warmup' : 'measuring';
+        if (now - lastDataLogTs >= 600000) {
+          lastDataLogTs = now;
+          rawDataLog.push({
+          timestamp:       new Date(now).toISOString(),
+          elapsed_sec:     monitoringStartTs > 0 ? Math.round((now - monitoringStartTs) / 1000) : 0,
+          ear_left:        +liveEarL.toFixed(4),
+          ear_right:       +liveEarR.toFixed(4),
+          ear_avg:         +result.detail.avgEAR.toFixed(4),
+          ear_baseline:    +baselineRef.ear.toFixed(4),
+          ear_ratio:       +earRatio.toFixed(4),
+          blink_rate:      +result.raw.blinkRate.toFixed(2),
+          blink_baseline:  +baselineRef.blinkRate.toFixed(2),
+          blink_ratio:     +blinkRatio.toFixed(4),
+          incomplete_rate: +incRate.toFixed(4),
+          perclos:         +result.raw.perclos.toFixed(4),
+          delta:           +delta.toFixed(4),
+          score:           state.score,
+          phase,
+          });
+        }
         state.earLeft        = parseFloat(liveEarL.toFixed(2));
         state.earRight       = parseFloat(liveEarR.toFixed(2));
         state.blinkRate      = Math.max(0, Math.round(result.raw.blinkRate));

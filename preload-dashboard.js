@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendState: (state) => ipcRenderer.send('state-update', state),
   setDimOverlay: (opacity) => ipcRenderer.invoke('set-dim-overlay', { opacity }),
   showNotification: (title, body, navigateTo) => ipcRenderer.send('show-notification', { title, body, navigateTo }),
+  saveCsv: (csv) => ipcRenderer.invoke('save-csv', csv),
 });

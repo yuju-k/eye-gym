@@ -1,5 +1,6 @@
-const { app, BrowserWindow, screen, session, Tray, Menu, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, session, Tray, Menu, nativeImage, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const notifier = require('node-notifier');
 
 let win = null;
@@ -158,6 +159,18 @@ ipcMain.on('show-notification', (_event, { title, body, navigateTo }) => {
 });
 
 
+
+ipcMain.handle('save-csv', async (_event, csvString) => {
+  const defaultName = `okumong-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.csv`;
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    title: '측정 데이터 저장',
+    defaultPath: path.join(app.getPath('downloads'), defaultName),
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  if (canceled || !filePath) return { ok: false };
+  fs.writeFileSync(filePath, csvString, 'utf-8');
+  return { ok: true, filePath };
+});
 
 ipcMain.on('quit-app', () => app.exit());
 
