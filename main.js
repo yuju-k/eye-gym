@@ -1,9 +1,48 @@
-const { app, BrowserWindow, session, Tray, Menu, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, session, Tray, Menu, nativeImage, ipcMain } = require('electron');
 const path = require('path');
 
 let win = null;
 let popupWin = null;
 let tray = null;
+let dimWin = null;
+let currentDimOpacity = 0;
+let dimFadeTimer = null;
+
+function createDimOverlay() {
+  const { bounds } = screen.getPrimaryDisplay();
+  dimWin = new BrowserWindow({
+    x: bounds.x, y: bounds.y,
+    width: bounds.width, height: bounds.height,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  dimWin.setAlwaysOnTop(true, 'screen-saver');
+  dimWin.setIgnoreMouseEvents(true);
+  dimWin.loadFile('dim-overlay.html');
+}
+
+function fadeDimOverlay(targetOpacity) {
+  if (dimFadeTimer) { clearInterval(dimFadeTimer); dimFadeTimer = null; }
+  if (targetOpacity > 0 && !dimWin.isVisible()) {
+    dimWin.setOpacity(0);
+    dimWin.show();
+  }
+  dimFadeTimer = setInterval(() => {
+    const step = 0.02;
+    if (currentDimOpacity < targetOpacity) currentDimOpacity = Math.min(targetOpacity, currentDimOpacity + step);
+    else if (currentDimOpacity > targetOpacity) currentDimOpacity = Math.max(targetOpacity, currentDimOpacity - step);
+    if (!dimWin.isDestroyed()) dimWin.setOpacity(currentDimOpacity);
+    if (currentDimOpacity === targetOpacity) {
+      clearInterval(dimFadeTimer); dimFadeTimer = null;
+      if (targetOpacity === 0) dimWin.hide();
+    }
+  }, 50);
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -87,12 +126,23 @@ function createTray() {
   tray.on('right-click', () => tray.popUpContextMenu(menu));
 }
 
+ipcMain.on('state-update', (_event, state) => {
+  if (popupWin && !popupWin.isDestroyed()) {
+    popupWin.webContents.send('update-state', state);
+  }
+});
+
 ipcMain.on('show-dashboard', (_event, view) => {
   popupWin.hide();
   win.show();
   win.focus();
   if (view) win.webContents.send('navigate', view);
 });
+
+ipcMain.handle('set-dim-overlay', (_event, { opacity }) => {
+  fadeDimOverlay(opacity);
+});
+
 
 ipcMain.on('quit-app', () => app.exit());
 
@@ -110,6 +160,7 @@ app.whenReady().then(() => {
   createWindow();
   createPopup();
   createTray();
+  createDimOverlay();
 });
 
 app.on('window-all-closed', () => {});

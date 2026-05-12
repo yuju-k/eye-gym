@@ -54,6 +54,7 @@
         linear-gradient(90deg, #101020, #111121);
     }
 
+
     .sidebar {
       position: relative;
       display: flex;
@@ -1053,63 +1054,6 @@
       font-weight: 600;
     }
 
-    .menubar-demo {
-      position: fixed;
-      top: 28px;
-      right: 34px;
-      width: 311px;
-      height: 381px;
-      display: none;
-      flex-direction: column;
-      gap: 16px;
-      padding: 21px;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      background: rgba(30,30,47,0.82);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 20px 40px -15px rgba(0,0,0,0.5);
-      z-index: 5;
-    }
-
-    .menubar-demo.open { display: flex; }
-
-    .menubar-head {
-      display: flex;
-      justify-content: space-between;
-      font-size: 14px;
-      color: var(--text);
-    }
-
-    .mini-mascot {
-      display: flex;
-      justify-content: center;
-      height: 110px;
-      margin-top: -8px;
-    }
-
-    .mini-mascot .mascot-img {
-      width: 104px;
-      height: 104px;
-    }
-
-    .popup-score {
-      margin-top: -14px;
-      text-align: center;
-    }
-
-    .popup-score strong {
-      display: block;
-      font-family: "JetBrains Mono", monospace;
-      font-size: 40px;
-      line-height: 48px;
-    }
-
-    .popup-score span {
-      color: var(--muted);
-      font-size: 12px;
-      letter-spacing: 1.2px;
-    }
-
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -1131,16 +1075,6 @@
       border-radius: 50%;
       background: currentColor;
       box-shadow: 0 0 8px currentColor;
-    }
-
-    .popup-action {
-      width: 100%;
-      min-height: 40px;
-      margin-top: auto;
-      border-radius: 8px;
-      background: var(--blue);
-      color: #003355;
-      font-weight: 700;
     }
 
     .notification {
@@ -1824,7 +1758,6 @@
           </div>
           <div class="header-actions">
             <button class="icon-button" id="notify-button" title="알림 미리보기">♧</button>
-            <button class="icon-button" id="popup-button" title="메뉴바 팝업 미리보기">⚙</button>
           </div>
         </header>
 
@@ -2259,18 +2192,6 @@
     </main>
   </div>
 
-  <aside class="menubar-demo" id="menubar-demo" aria-label="메뉴바 드롭다운 미리보기">
-    <div class="menubar-head"><span>◉ 오큐몽</span><span>☷</span></div>
-    <div class="mini-mascot">
-      <img id="mascot-mini-img" class="mascot-img" src="images/좋음.png" alt="오큐몽 캐릭터">
-    </div>
-    <div class="popup-score">
-      <strong id="popup-score">72</strong>
-      <span>점수</span>
-      <div><span class="status-pill" id="popup-status">상태: 조금 피로함</span></div>
-    </div>
-    <button class="popup-action" data-view-target="dashboard">대시보드 열기</button>
-  </aside>
 
   <aside class="notification" id="notification" aria-live="polite">
     <div class="app-icon">◉</div>
@@ -2365,7 +2286,6 @@
 
     const views = document.querySelectorAll(".view");
     const navButtons = document.querySelectorAll(".nav button");
-    const menuPopup = document.getElementById("menubar-demo");
     const notification = document.getElementById("notification");
     const recoveryOverlay = document.getElementById("recovery-overlay");
     const recoveryCount = document.getElementById("recovery-count");
@@ -2398,16 +2318,25 @@
       return { title: "심한 피로", copy: "피로 신호가 강합니다. 화면에서 잠시 벗어나 눈을 쉬게 해주세요.", color: "#ffaaa4" };
     }
 
+    let lastDimOpacity = -1;
+
+    function applyIntervention(score) {
+      const dimOpacity = score >= 70 ? 0 : score >= 50 ? 0.1 : score >= 35 ? 0.2 : 0.3;
+      if (dimOpacity !== lastDimOpacity) {
+        lastDimOpacity = dimOpacity;
+        window.electronAPI?.setDimOverlay(dimOpacity);
+      }
+    }
+
     function render() {
       const status = getStatus(state.score);
+      window.electronAPI?.sendState({ score: state.score, statusTitle: status.title });
+      applyIntervention(state.score);
       document.getElementById("elapsed").textContent = formatDuration(state.elapsedSeconds);
       document.getElementById("break-timer").textContent = formatTimer(state.nextBreakSeconds);
       document.getElementById("condition-score").textContent = state.score;
-      document.getElementById("popup-score").textContent = state.score;
       document.getElementById("condition-title").textContent = status.title;
       document.getElementById("condition-copy").textContent = status.copy;
-      document.getElementById("popup-status").textContent = `상태: ${status.title}`;
-      document.getElementById("popup-status").style.color = status.color;
       document.getElementById("blink-rate").textContent = state.blinkRate;
       document.getElementById("incomplete-rate").textContent = `${state.incompleteRate}%`;
       document.getElementById("ear-left").textContent = state.earLeft.toFixed(2);
@@ -2416,13 +2345,11 @@
       document.getElementById("score-ring").style.background = `conic-gradient(${status.color} 0 ${state.score}%, rgba(255,255,255,0.08) ${state.score}% 100%)`;
       const charSrc = getCharacterImage(state.score);
       document.getElementById("mascot-img").src = charSrc;
-      document.getElementById("mascot-mini-img").src = charSrc;
     }
 
     function setView(name) {
       views.forEach(view => view.classList.toggle("active", view.id === `view-${name}`));
       navButtons.forEach(button => button.classList.toggle("active", button.dataset.view === name));
-      menuPopup.classList.remove("open");
       if (name === 'detail' && webcamVideoEl.srcObject) {
         const dv = document.getElementById('detail-webcam-video');
         if (!dv.srcObject) dv.srcObject = webcamVideoEl.srcObject;
@@ -2434,7 +2361,7 @@
       button.addEventListener("click", () => setView(button.dataset.view));
     });
 
-    document.querySelector("[data-view-target='dashboard']").addEventListener("click", () => setView("dashboard"));
+    document.querySelector("[data-view-target='dashboard']")?.addEventListener("click", () => setView("dashboard"));
 
     document.getElementById('detail-restart-btn').addEventListener('click', () => startBaselineCollection());
     document.getElementById('detail-restart-btn2').addEventListener('click', () => startBaselineCollection());
@@ -2444,10 +2371,6 @@
       state.running = true;
       document.getElementById('welcome-overlay').classList.remove('open');
       startBaselineCollection();
-    });
-
-    document.getElementById("popup-button").addEventListener("click", () => {
-      menuPopup.classList.toggle("open");
     });
 
     document.getElementById("notify-button").addEventListener("click", () => {
@@ -2472,8 +2395,10 @@
       document.getElementById("start-exercise").textContent = "▶ 회복 루틴 시작";
       document.getElementById("start-exercise").disabled = false;
       notification.classList.remove("show");
-      state.score = Math.min(100, state.score + 8);
+      smoothedScore = Math.min(100, smoothedScore + 10);
+      state.score = Math.round(smoothedScore);
       state.nextBreakSeconds = 1200;
+      pushSessionEvent('', '20-20-20 루틴 완료, +10 회복');
       render();
     }
 
@@ -2613,6 +2538,7 @@
     const EAR_CLOSED_THRESH       = 0.25; // PERCLOS용 — 깜빡임 임계값(0.21)과 분리
     const MIN_BASELINE_SEC        = 20;
     const MAX_BASELINE_SEC        = 60;
+    const WARMUP_SEC              = 150; // 초기 수집 후 2.5분간 무음 베이스라인 업데이트
     const CONVERGENCE_WINDOW_SEC  = 8;
     const CONVERGENCE_THRESHOLD   = 0.025;
     const ROLLING_SEC             = 60;
@@ -2622,6 +2548,7 @@
 
     let baselineActive   = false;
     let baselineClosing  = false;
+    let warmupActive     = false;
     let baselineStart    = 0;
     let baselineEARSamples = [];   // { t, v } — 눈 뜬 프레임만
     let baselineBlinkDurs  = [];
@@ -2727,6 +2654,7 @@
       hideFaceLostOverlay();
       baselineActive   = true;
       baselineClosing  = false;
+      warmupActive     = false;
       baselineStart    = Date.now();
       faceState = 'TRACKING'; faceStateFrames = 0; prevEar = -1;
       baselineEARSamples = [];
@@ -2759,14 +2687,15 @@
       allFrameTimes = [];  closedFrameTimes = [];
       totalBlinks = 0;     incompleteBlinks = 0;
 
+      warmupActive = true;
       monitoringStartTs = Date.now();
       detailSessionStart = Date.now();
       detailChartData = { fatigue: [], ear: [], blink: [], perclos: [] };
       smoothedScore = 100;
       state.score = 100;
-      document.getElementById('monitoring-state').textContent = '측정 중';
-      document.getElementById('d-fatigue-status').textContent = '측정 중';
-      pushSessionEvent('', '베이스라인 수집 완료, 측정 시작');
+      document.getElementById('monitoring-state').textContent = '베이스라인 안정화 중';
+      document.getElementById('d-fatigue-status').textContent = '베이스라인 안정화 중';
+      pushSessionEvent('', '초기 수집 완료, 베이스라인 안정화 중');
     }
 
     // ── 상세측정 뷰 ──────────────────────────────────────────────────────────
@@ -2970,7 +2899,7 @@
           totalBlinks++;
           if (minEARInBlink > 0.12) incompleteBlinks++;
           blinkEvents.push({ t: now, duration: dur });
-          if (baselineActive) baselineBlinkDurs.push(dur);
+          if (baselineActive || warmupActive) baselineBlinkDurs.push(dur);
         }
         minEARInBlink = 1;
       }
@@ -2978,7 +2907,7 @@
       // 깜빡임 중 프레임 제외 — 베이스라인·모니터링 모두 동일 조건으로 비교
       if (!isBlinking) {
         earBuffer.push({ t: now, v: ear });
-        if (baselineActive) baselineEARSamples.push({ t: now, v: ear });
+        if (baselineActive || warmupActive) baselineEARSamples.push({ t: now, v: ear });
       }
 
       const trim = now - 120000;
@@ -3010,14 +2939,48 @@
       // 2초마다 피로도 계산 → state 업데이트
       if (now - lastFatigueUpdate > 2000) {
         lastFatigueUpdate = now;
+
+        if (warmupActive) {
+          if (baselineEARSamples.length > 0) {
+            baselineRef.ear = baselineEARSamples.reduce((a, b) => a + b.v, 0) / baselineEARSamples.length;
+          }
+          const totalSec = (now - baselineStart) / 1000;
+          baselineRef.blinkRate = (baselineBlinkDurs.length / totalSec) * 60;
+          if (baselineBlinkDurs.length > 0) {
+            baselineRef.blinkDur = baselineBlinkDurs.reduce((a, b) => a + b, 0) / baselineBlinkDurs.length;
+          }
+          if ((now - monitoringStartTs) / 1000 >= WARMUP_SEC) {
+            warmupActive = false;
+            document.getElementById('monitoring-state').textContent = '측정 중';
+            document.getElementById('d-fatigue-status').textContent = '측정 중';
+            pushSessionEvent('', '베이스라인 확정, 본 측정 시작');
+          }
+        }
+
         const result   = computeFatigue();
         const prevScore = state.score;
 
-        // 비대칭 EMA: 하락(피로 증가)은 α=0.35, 상승(회복)은 α=0.15
-        const rawScore = Math.max(0, Math.min(100, 100 - result.score));
-        const alpha    = rawScore < smoothedScore ? 0.35 : 0.15;
-        smoothedScore  = smoothedScore * (1 - alpha) + rawScore * alpha;
-        state.score    = Math.round(smoothedScore);
+        // 패턴 기반 감점: 특정 피로 패턴 감지 시 차감, 패턴 없으면 서서히 회복
+        const earRatio   = baselineRef.ear > 0 ? result.detail.avgEAR / baselineRef.ear : 1;
+        const blinkRatio = baselineRef.blinkRate > 0 ? result.raw.blinkRate / baselineRef.blinkRate : 1;
+        const incRate    = totalBlinks > 0 ? incompleteBlinks / totalBlinks : 0;
+
+        let delta = 0;
+        // 눈 처짐 (EAR 하락)
+        if      (earRatio < 0.74) delta -= 0.08;
+        else if (earRatio < 0.84) delta -= 0.04;
+        else if (earRatio < 0.92) delta -= 0.02;
+        // 깜빡임 빈도 저하
+        if      (blinkRatio < 0.55) delta -= 0.05;
+        else if (blinkRatio < 0.75) delta -= 0.02;
+        // 불완전 깜빡임 증가
+        if      (incRate > 0.50) delta -= 0.04;
+        else if (incRate > 0.35) delta -= 0.02;
+        // PERCLOS 상승
+        if      (result.raw.perclos > 0.10) delta -= 0.06;
+        else if (result.raw.perclos > 0.05) delta -= 0.03;
+        smoothedScore = Math.max(0, Math.min(100, smoothedScore + delta));
+        state.score   = Math.round(smoothedScore);
         state.earLeft        = parseFloat(liveEarL.toFixed(2));
         state.earRight       = parseFloat(liveEarR.toFixed(2));
         state.blinkRate      = Math.max(0, Math.round(result.raw.blinkRate));
@@ -3057,6 +3020,36 @@
     if (window.electronAPI) {
       window.electronAPI.onNavigate(view => setView(view));
     }
+
+    // ── 개발용 디버그 단축키 (Shift+1~4) ──────────────────
+    document.addEventListener('keydown', (e) => {
+      if (!e.shiftKey) return;
+
+      // Shift+0: 웰컴/베이스라인 즉시 스킵 (테스트용)
+      if (e.code === 'Digit0') {
+        welcomeActive = false;
+        state.running = true;
+        baselineActive = false;
+        warmupActive   = false;
+        baselineRef    = { ear: 0.28, blinkRate: 15, blinkDur: 200 };
+        monitoringStartTs = Date.now();
+        smoothedScore  = 100;
+        state.score    = 100;
+        document.getElementById('welcome-overlay').classList.remove('open');
+        document.getElementById('baseline-overlay').classList.remove('open');
+        document.getElementById('monitoring-state').textContent = '측정 중 [DEBUG]';
+        render();
+        return;
+      }
+
+      // Shift+1~4: 점수 강제 설정
+      const map = { 'Digit1': 90, 'Digit2': 60, 'Digit3': 40, 'Digit4': 20 };
+      if (map[e.code] === undefined) return;
+      smoothedScore = map[e.code];
+      state.score   = map[e.code];
+      render();
+      console.log(`[DEBUG] score forced to ${map[e.code]}`);
+    });
   </script>
 </body>
 </html>
